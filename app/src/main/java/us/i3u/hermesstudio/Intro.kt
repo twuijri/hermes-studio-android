@@ -1,6 +1,7 @@
 package us.i3u.hermesstudio
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -116,6 +117,7 @@ private val INTRO_PAGES = listOf(
 )
 
 /** First-run walkthrough: what the app is, and that a server is required. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun OnboardingScreen(onDone: () -> Unit) {
     val pagerState = rememberPagerState(pageCount = { INTRO_PAGES.size })
