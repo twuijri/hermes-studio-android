@@ -17,10 +17,14 @@ directly and renders a native, phone-shaped interface instead of wrapping a web 
   talking in the same session
 - **All profiles filter**, matching Studio's dropdown, or scope the list to one profile
 - **Group chat tab**: rooms with agent and member counts, open a room to read its messages
-- **Attachments**: pick an image or any file, it uploads to your server and rides
-  along with the message as a proper content block
-- **Voice**: hold the mic to record, then either transcribe it into the composer
-  through your Studio STT provider or send the recording itself as an attachment
+- **Composer laid out like Telegram**: one full-width field, and a single trailing
+  button that is the microphone until you type, then becomes send
+- **Attachment sheet like WhatsApp**: tap the clip for Camera, Gallery or Document —
+  more sources slot in as extra tiles later
+- Attachments upload to your server and ride along with the message as proper
+  content blocks
+- **Voice**: record, then either transcribe into the composer through your Studio
+  STT provider or send the take itself as audio
 - Profiles screen to switch which agent a new chat talks to
 - Start a fresh conversation at any time
 - Studio's dark palette, RTL-aware layout (Arabic reads correctly)
@@ -61,9 +65,9 @@ channel, which is what lets a mobile client get a complete answer without implem
 the streaming protocol.
 
 All traffic goes to the address you enter, over HTTPS. Nothing is sent anywhere else and
-there is no analytics. The app asks for `INTERNET`, plus `RECORD_AUDIO` only when you
-first tap the microphone; recordings are written to the app cache, uploaded, and deleted
-immediately.
+there is no analytics. The app asks for `INTERNET`, plus `RECORD_AUDIO` and `CAMERA` only
+at the moment you first use the microphone or the camera. Recordings and captures are
+written to the app cache, uploaded, and deleted immediately.
 
 ## Roadmap
 

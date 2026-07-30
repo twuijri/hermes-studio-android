@@ -37,6 +37,8 @@ import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Group
@@ -49,6 +51,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -77,7 +81,10 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.FileProvider
+import java.io.File
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -599,7 +606,7 @@ private fun ProfilesScreen(state: UiState, viewModel: AppViewModel) {
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 private fun Composer(
     state: UiState,
@@ -609,6 +616,8 @@ private fun Composer(
     viewModel: AppViewModel,
 ) {
     val context = LocalContext.current
+    var sheetOpen by remember { mutableStateOf(false) }
+    var captureUri by remember { mutableStateOf<Uri?>(null) }
 
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let { readAndAttach(context, it, viewModel) }
@@ -616,8 +625,42 @@ private fun Composer(
     val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let { readAndAttach(context, it, viewModel) }
     }
+    val takePhoto = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
+        val uri = captureUri
+        captureUri = null
+        if (saved && uri != null) readAndAttach(context, uri, viewModel, fallbackName = "photo.jpg")
+    }
+    val askCamera = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            val uri = newCaptureUri(context)
+            captureUri = uri
+            takePhoto.launch(uri)
+        }
+    }
     val askMic = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) viewModel.startRecording()
+    }
+
+    if (sheetOpen) {
+        ModalBottomSheet(
+            onDismissRequest = { sheetOpen = false },
+            sheetState = rememberModalBottomSheetState(),
+        ) {
+            AttachSheet(
+                onCamera = {
+                    sheetOpen = false
+                    askCamera.launch(Manifest.permission.CAMERA)
+                },
+                onGallery = {
+                    sheetOpen = false
+                    pickImage.launch("image/*")
+                },
+                onDocument = {
+                    sheetOpen = false
+                    pickFile.launch("*/*")
+                },
+            )
+        }
     }
 
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -641,67 +684,148 @@ private fun Composer(
 
         if (state.recording || state.transcribing) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 CircularProgressIndicator(modifier = Modifier.size(14.dp))
                 Text(
-                    if (state.recording) "Recording — tap stop to transcribe" else "Transcribing…",
+                    if (state.recording) "Recording…" else "Transcribing…",
                     style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.weight(1f),
                 )
                 if (state.recording) {
-                    TextButton(onClick = { viewModel.stopRecordingAndAttach() }) { Text("Send as audio") }
+                    TextButton(onClick = { viewModel.stopRecordingAndAttach() }) { Text("Send audio") }
                     TextButton(onClick = { viewModel.cancelRecording() }) { Text("Cancel") }
                 }
             }
         }
 
         Row(
-            modifier = Modifier.fillMaxWidth().padding(8.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
             verticalAlignment = Alignment.Bottom,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            IconButton(onClick = { pickImage.launch("image/*") }, enabled = !state.sending) {
-                Icon(Icons.Filled.Image, contentDescription = "Attach image")
-            }
-            IconButton(onClick = { pickFile.launch("*/*") }, enabled = !state.sending) {
-                Icon(Icons.Filled.AttachFile, contentDescription = "Attach file")
-            }
             OutlinedTextField(
                 value = draft,
                 onValueChange = onDraftChange,
                 placeholder = { Text("Message") },
                 modifier = Modifier.weight(1f),
                 maxLines = 5,
+                shape = RoundedCornerShape(22.dp),
+                trailingIcon = {
+                    IconButton(onClick = { sheetOpen = true }, enabled = !state.sending) {
+                        Icon(Icons.Filled.AttachFile, contentDescription = "Attach")
+                    }
+                },
             )
-            if (state.recording) {
-                IconButton(onClick = { viewModel.stopRecordingAndTranscribe() }) {
-                    Icon(Icons.Filled.Stop, contentDescription = "Stop and transcribe")
-                }
-            } else {
-                IconButton(
-                    onClick = { askMic.launch(Manifest.permission.RECORD_AUDIO) },
-                    enabled = !state.sending && !state.transcribing,
-                ) {
-                    Icon(Icons.Filled.Mic, contentDescription = "Record voice")
-                }
-            }
-            IconButton(
-                onClick = onSend,
-                enabled = (draft.isNotBlank() || state.attachments.isNotEmpty()) && !state.sending,
+
+            // One trailing action, like Telegram: microphone until there is
+            // something to send, then the send arrow.
+            val hasPayload = draft.isNotBlank() || state.attachments.isNotEmpty()
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(MaterialTheme.colorScheme.primary),
+                contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Filled.Send, contentDescription = "Send")
+                when {
+                    state.recording -> IconButton(onClick = { viewModel.stopRecordingAndTranscribe() }) {
+                        Icon(
+                            Icons.Filled.Stop,
+                            contentDescription = "Stop and transcribe",
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    }
+                    hasPayload -> IconButton(onClick = onSend, enabled = !state.sending) {
+                        Icon(
+                            Icons.Filled.Send,
+                            contentDescription = "Send",
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    }
+                    else -> IconButton(
+                        onClick = { askMic.launch(Manifest.permission.RECORD_AUDIO) },
+                        enabled = !state.transcribing,
+                    ) {
+                        Icon(
+                            Icons.Filled.Mic,
+                            contentDescription = "Record voice",
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    }
+                }
             }
         }
     }
 }
 
+/** WhatsApp-style attachment options; new sources slot in as extra tiles. */
+@Composable
+private fun AttachSheet(
+    onCamera: () -> Unit,
+    onGallery: () -> Unit,
+    onDocument: () -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 28.dp)) {
+        Text(
+            "Attach",
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+        ) {
+            AttachOption(Icons.Filled.PhotoCamera, "Camera", onCamera)
+            AttachOption(Icons.Filled.Image, "Gallery", onGallery)
+            AttachOption(Icons.Filled.InsertDriveFile, "Document", onDocument)
+        }
+    }
+}
+
+@Composable
+private fun AttachOption(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .clip(RoundedCornerShape(28.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = label, tint = MaterialTheme.colorScheme.primary)
+        }
+        Text(label, style = MaterialTheme.typography.labelMedium)
+    }
+}
+
+/** Cache-backed target for a camera capture, shared through the FileProvider. */
+private fun newCaptureUri(context: Context): Uri {
+    val dir = File(context.cacheDir, "captures").apply { mkdirs() }
+    val file = File(dir, "capture-${System.currentTimeMillis()}.jpg")
+    return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+}
+
 /** Reads a picked document through the content resolver and hands it to the upload. */
-private fun readAndAttach(context: Context, uri: Uri, viewModel: AppViewModel) {
+private fun readAndAttach(
+    context: Context,
+    uri: Uri,
+    viewModel: AppViewModel,
+    fallbackName: String? = null,
+) {
     val resolver = context.contentResolver
-    val mime = resolver.getType(uri) ?: "application/octet-stream"
-    var name = "attachment"
+    val mime = resolver.getType(uri) ?: if (fallbackName?.endsWith(".jpg") == true) "image/jpeg" else "application/octet-stream"
+    var name = fallbackName ?: "attachment"
     runCatching {
         resolver.query(uri, null, null, null, null)?.use { cursor ->
             val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
