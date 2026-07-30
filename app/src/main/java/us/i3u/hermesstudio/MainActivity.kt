@@ -26,6 +26,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -50,6 +52,9 @@ import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -115,6 +120,9 @@ private fun App(viewModel: AppViewModel = viewModel()) {
     val state by viewModel.state.collectAsState()
 
     when (state.screen) {
+        Screen.Loading -> LoadingScreen(state.baseUrl)
+        Screen.Onboarding -> OnboardingScreen(onDone = { viewModel.finishOnboarding() })
+        Screen.Settings -> SettingsScreen(state, viewModel)
         Screen.Login -> LoginScreen(state, viewModel)
         Screen.Chats -> ChatsScreen(state, viewModel)
         Screen.Groups -> GroupsScreen(state, viewModel)
@@ -203,6 +211,9 @@ private fun ChatsScreen(state: UiState, viewModel: AppViewModel) {
                     }
                     IconButton(onClick = { viewModel.show(Screen.Profiles) }) {
                         Icon(Icons.Filled.Person, contentDescription = "Profiles")
+                    }
+                    IconButton(onClick = { viewModel.openSettings() }) {
+                        Icon(Icons.Filled.Settings, contentDescription = "Settings")
                     }
                 },
             )
@@ -1062,6 +1073,178 @@ private fun readAndAttach(
     val bytes = runCatching { resolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
     if (bytes == null || bytes.isEmpty()) return
     viewModel.attach(bytes, name, mime)
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
+    var modelSheet by remember { mutableStateOf(false) }
+    val profile = state.activeProfile.ifBlank { "default" }
+
+    if (modelSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { modelSheet = false },
+            sheetState = rememberModalBottomSheetState(),
+        ) {
+            PickerSheet(
+                title = "Default model for $profile",
+                loading = state.loadingModels,
+                rows = state.models.map { option ->
+                    PickerRow(
+                        label = option.id,
+                        detail = option.provider,
+                        selected = option.id == state.defaultModel,
+                    ) {
+                        viewModel.setDefaultModel(option)
+                        modelSheet = false
+                    }
+                },
+            )
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            StudioTopBar(
+                title = "Settings",
+                subtitle = state.account?.let { "Signed in as $it" },
+                onBack = { viewModel.back() },
+            )
+        },
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            if (state.savingSetting) LoadingRow()
+            state.error?.let { ErrorNote(it) { viewModel.dismissError() } }
+            state.notice?.let { NoticeNote(it) { viewModel.dismissNotice() } }
+
+            SettingsSection("Server")
+            SettingsRow(
+                icon = Icons.Filled.Dns,
+                label = "Address",
+                value = state.baseUrl.ifBlank { "not set" },
+            )
+            SettingsRow(
+                icon = Icons.Filled.Person,
+                label = "Account",
+                value = state.account ?: "unknown",
+            )
+
+            SettingsSection("Active profile")
+            SettingsRow(
+                icon = Icons.Filled.Person,
+                label = "Profile",
+                value = profile,
+                onClick = { viewModel.show(Screen.Profiles) },
+            )
+            SettingsRow(
+                icon = Icons.Filled.WbSunny,
+                label = "Default model",
+                value = state.defaultModel ?: "server default",
+                onClick = {
+                    viewModel.loadModels()
+                    modelSheet = true
+                },
+            )
+            SettingsRow(
+                icon = Icons.Filled.RestartAlt,
+                label = "Restart gateway",
+                value = "Applies channel and model changes",
+                onClick = { viewModel.restartGateway() },
+            )
+
+            SettingsSection("This device")
+            SettingsRow(
+                icon = Icons.Filled.Psychology,
+                label = "Reasoning effort",
+                value = REASONING_LEVELS.firstOrNull { it.first == state.reasoningEffort }?.second ?: "Default",
+                onClick = { viewModel.show(Screen.Settings) },
+            )
+            Text(
+                "Reasoning effort is chosen per conversation from the + menu in the composer.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
+
+            SettingsSection("Account")
+            SettingsRow(
+                icon = Icons.Filled.Logout,
+                label = "Sign out",
+                value = "Removes the stored token from this device",
+                onClick = { viewModel.signOut() },
+            )
+
+            SettingsSection("About")
+            SettingsRow(icon = Icons.Filled.Chat, label = "Version", value = BuildConfig.VERSION_NAME)
+            Text(
+                "Unofficial community client for Hermes Studio.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsSection(label: String) {
+    Text(
+        label.uppercase(),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 6.dp),
+    )
+}
+
+@Composable
+private fun SettingsRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    value: String,
+    onClick: (() -> Unit)? = null,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(modifier = Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                value,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (onClick != null) {
+            Text("›", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+}
+
+@Composable
+private fun NoticeNote(message: String, onDismiss: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(message, modifier = Modifier.weight(1f))
+            TextButton(onClick = onDismiss) { Text("OK") }
+        }
+    }
 }
 
 // ── shared pieces ────────────────────────────────────────────────────────

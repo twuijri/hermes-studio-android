@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-enum class Screen { Login, Chats, Groups, Conversation, Room, Profiles }
+enum class Screen { Loading, Onboarding, Login, Chats, Groups, Conversation, Room, Profiles, Settings }
 
 /** The two list tabs, mirroring Studio's chat / group-chat switch. */
 enum class Tab { Chats, Groups }
@@ -53,6 +53,9 @@ data class UiState(
     /** Blank means the profile default, matching Studio's "Default" chip. */
     val reasoningEffort: String = "",
     val sessionModel: String? = null,
+    val defaultModel: String? = null,
+    val savingSetting: Boolean = false,
+    val notice: String? = null,
 )
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
@@ -62,12 +65,27 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val recorder = Recorder(app)
 
     private val _state = MutableStateFlow(
-        UiState(baseUrl = store.baseUrl, reasoningEffort = store.reasoningEffort),
+        UiState(
+            // A configured install must never flash the credentials form: it reads
+            // as "sign in again" even though the token is still good.
+            screen = when {
+                store.isConfigured -> Screen.Loading
+                store.onboarded -> Screen.Login
+                else -> Screen.Onboarding
+            },
+            baseUrl = store.baseUrl,
+            reasoningEffort = store.reasoningEffort,
+        ),
     )
     val state: StateFlow<UiState> = _state.asStateFlow()
 
     init {
         if (store.isConfigured) restoreSession()
+    }
+
+    fun finishOnboarding() {
+        store.onboarded = true
+        _state.update { it.copy(screen = Screen.Login) }
     }
 
     private fun restoreSession() = launchWork(
@@ -87,9 +105,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
         },
-        onFailure = {
+        onFailure = { failure ->
             store.clearCredentials()
-            _state.update { it.copy(screen = Screen.Login, error = null) }
+            _state.update {
+                it.copy(
+                    screen = Screen.Login,
+                    error = "Session expired: " + failure.readableMessage(),
+                )
+            }
         },
     )
 
@@ -408,6 +431,55 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
+    // ── settings ──────────────────────────────────────────────────────────
+
+    fun openSettings() {
+        _state.update { it.copy(screen = Screen.Settings, error = null, notice = null) }
+        loadModels()
+        val profile = _state.value.activeProfile.ifBlank { "default" }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.defaultModel(profile) } }
+                .onSuccess { model -> _state.update { it.copy(defaultModel = model) } }
+        }
+    }
+
+    /** Writes the profile default, which is what new conversations start from. */
+    fun setDefaultModel(option: ModelOption) {
+        val profile = _state.value.activeProfile.ifBlank { "default" }
+        _state.update { it.copy(savingSetting = true, error = null, notice = null) }
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) { api.setDefaultModel(profile, option.id, option.provider) }
+            }.onSuccess {
+                _state.update {
+                    it.copy(
+                        savingSetting = false,
+                        defaultModel = option.id,
+                        notice = "Default model for $profile is now ${option.id}",
+                    )
+                }
+            }.onFailure { failure ->
+                _state.update { it.copy(savingSetting = false, error = failure.readableMessage()) }
+            }
+        }
+    }
+
+    fun restartGateway() {
+        val profile = _state.value.activeProfile.ifBlank { "default" }
+        _state.update { it.copy(savingSetting = true, error = null, notice = null) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.restartGateway(profile) } }
+                .onSuccess {
+                    _state.update { it.copy(savingSetting = false, notice = "Gateway restarting for $profile") }
+                }
+                .onFailure { failure ->
+                    _state.update { it.copy(savingSetting = false, error = failure.readableMessage()) }
+                }
+        }
+    }
+
+    fun dismissNotice() = _state.update { it.copy(notice = null) }
+
     // ── misc ──────────────────────────────────────────────────────────────
 
     fun back() {
@@ -421,7 +493,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun signOut() {
         store.clearCredentials()
-        _state.update { UiState(baseUrl = store.baseUrl) }
+        _state.update {
+            UiState(
+                screen = Screen.Login,
+                baseUrl = store.baseUrl,
+                reasoningEffort = store.reasoningEffort,
+            )
+        }
     }
 
     private fun currentProfile(): String =

@@ -7,8 +7,14 @@ Not affiliated with EKKOLearnAI.
 The Studio web UI is built for the desktop, so this app talks to the same HTTP API
 directly and renders a native, phone-shaped interface instead of wrapping a web view.
 
-## What works today (v0.4)
+## What works today (v0.6)
 
+- **First-run walkthrough** explaining what the app is and that you supply the
+  Hermes Studio server yourself
+- **Splash while the stored session is verified** — the sign-in form only appears when
+  you actually need to sign in
+- **Settings**: server and account, the active profile's default model, a gateway
+  restart, reasoning effort and sign out
 - Sign in with your Studio server address, username and password
 - Bearer token stored in `EncryptedSharedPreferences`, backed by the Android Keystore
 - **Your existing Studio conversations**, with the same list shape as the web sidebar:
@@ -64,6 +70,8 @@ the previous version.
 | Transcribe a recording | `POST /api/hermes/stt/transcribe` |
 | Available models | `GET /api/hermes/available-models?profile=…` |
 | Set a conversation's model | `POST /api/hermes/sessions/{id}/model` |
+| Profile default model | `GET /api/hermes/config` · `PUT /api/hermes/config/model` |
+| Restart a profile's gateway | `POST /api/hermes/profiles/{name}/gateway/restart` |
 | Send a message | `POST /api/chat-run/runs` |
 
 `POST /api/chat-run/runs` is the server's own REST wrapper around its Socket.IO chat

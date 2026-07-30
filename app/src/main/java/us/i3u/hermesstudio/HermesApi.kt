@@ -41,6 +41,7 @@ class HermesApi(
         builder.header("Accept", "application/json")
         when (method) {
             "POST" -> builder.post((body ?: JSONObject()).toString().toRequestBody(json))
+            "PUT" -> builder.put((body ?: JSONObject()).toString().toRequestBody(json))
             else -> builder.get()
         }
         return builder.build()
@@ -138,6 +139,24 @@ class HermesApi(
             }
         }
         return options.values.toList()
+    }
+
+    /** PUT /api/hermes/config/model — the profile's default model. */
+    fun setDefaultModel(profile: String, model: String, provider: String?) {
+        val body = JSONObject().put("default", model)
+        if (!provider.isNullOrBlank()) body.put("provider", provider)
+        call("/api/hermes/config/model?profile=${enc(profile)}", "PUT", body)
+    }
+
+    /** GET /api/hermes/config — the profile's current default model, if any. */
+    fun defaultModel(profile: String): String? {
+        val model = call("/api/hermes/config?profile=${enc(profile)}").optJSONObject("model")
+        return model?.let { firstNonBlank(it, "default") }
+    }
+
+    /** POST /api/hermes/profiles/{name}/gateway/restart */
+    fun restartGateway(profile: String) {
+        call("/api/hermes/profiles/${enc(profile)}/gateway/restart", "POST", JSONObject())
     }
 
     /** POST /api/hermes/sessions/{id}/model */
