@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -57,6 +58,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -127,6 +129,15 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun App(viewModel: AppViewModel = viewModel()) {
     val state by viewModel.state.collectAsState()
+
+    // The system back gesture belongs to the app while there is somewhere to go
+    // back to. Only the two root lists let it fall through and close the app.
+    when (state.screen) {
+        Screen.Conversation, Screen.Room, Screen.Profiles, Screen.Settings ->
+            BackHandler { viewModel.back() }
+        Screen.Groups -> BackHandler { viewModel.showTab(Tab.Chats) }
+        else -> Unit
+    }
 
     when (state.screen) {
         Screen.Loading -> LoadingScreen(state.baseUrl)
@@ -603,6 +614,17 @@ private fun MessageBubble(line: ChatLine, profile: String? = null, avatar: Avata
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ProfilesScreen(state: UiState, viewModel: AppViewModel) {
+    var confirmSignOut by remember { mutableStateOf(false) }
+    if (confirmSignOut) {
+        ConfirmDialog(
+            title = stringResource(R.string.confirm_sign_out_title),
+            body = stringResource(R.string.confirm_sign_out_body),
+            action = stringResource(R.string.action_sign_out),
+            onConfirm = { viewModel.signOut() },
+            onDismiss = { confirmSignOut = false },
+        )
+    }
+
     Scaffold(
         topBar = {
             StudioTopBar(
@@ -613,7 +635,7 @@ private fun ProfilesScreen(state: UiState, viewModel: AppViewModel) {
                     IconButton(onClick = { viewModel.refreshProfiles() }) {
                         Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.action_refresh))
                     }
-                    IconButton(onClick = { viewModel.signOut() }) {
+                    IconButton(onClick = { confirmSignOut = true }) {
                         Icon(Icons.Filled.Logout, contentDescription = stringResource(R.string.action_sign_out))
                     }
                 },
@@ -1116,6 +1138,35 @@ private fun readAndAttach(
     viewModel.attach(bytes, name, mime)
 }
 
+private enum class ConfirmAction { SignOut, RestartGateway }
+
+/** Stands between a stray tap and something that cannot be undone. */
+@Composable
+private fun ConfirmDialog(
+    title: String,
+    body: String,
+    action: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Text(body) },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onDismiss()
+                    onConfirm()
+                },
+            ) { Text(action) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        },
+    )
+}
+
 /**
  * Language is reachable before sign-in on purpose: someone who cannot read the
  * sign-in form cannot get to Settings to fix that.
@@ -1172,6 +1223,7 @@ private fun LanguageAction(state: UiState, viewModel: AppViewModel) {
 private fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
     var modelSheet by remember { mutableStateOf(false) }
     var languageSheet by remember { mutableStateOf(false) }
+    var confirm by remember { mutableStateOf<ConfirmAction?>(null) }
     val profile = state.activeProfile.ifBlank { "default" }
     val context = LocalContext.current
     val language = APP_LANGUAGES.firstOrNull { it.tag == state.language } ?: APP_LANGUAGES.first()
@@ -1207,6 +1259,24 @@ private fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
     }
 
     if (languageSheet) LanguageSheet(state, viewModel) { languageSheet = false }
+
+    when (confirm) {
+        ConfirmAction.SignOut -> ConfirmDialog(
+            title = stringResource(R.string.confirm_sign_out_title),
+            body = stringResource(R.string.confirm_sign_out_body),
+            action = stringResource(R.string.action_sign_out),
+            onConfirm = { viewModel.signOut() },
+            onDismiss = { confirm = null },
+        )
+        ConfirmAction.RestartGateway -> ConfirmDialog(
+            title = stringResource(R.string.confirm_restart_title),
+            body = stringResource(R.string.confirm_restart_body, profile),
+            action = stringResource(R.string.settings_restart_gateway),
+            onConfirm = { viewModel.restartGateway() },
+            onDismiss = { confirm = null },
+        )
+        null -> Unit
+    }
 
     Scaffold(
         topBar = {
@@ -1259,7 +1329,7 @@ private fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
                 icon = Icons.Filled.RestartAlt,
                 label = stringResource(R.string.settings_restart_gateway),
                 value = stringResource(R.string.settings_restart_gateway_note),
-                onClick = { viewModel.restartGateway() },
+                onClick = { confirm = ConfirmAction.RestartGateway },
             )
 
             SettingsSection(stringResource(R.string.settings_section_appearance))
@@ -1313,7 +1383,7 @@ private fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
                 icon = Icons.Filled.Logout,
                 label = stringResource(R.string.action_sign_out),
                 value = stringResource(R.string.settings_sign_out_note),
-                onClick = { viewModel.signOut() },
+                onClick = { confirm = ConfirmAction.SignOut },
             )
 
             SettingsSection(stringResource(R.string.settings_section_about))

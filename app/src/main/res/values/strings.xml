@@ -132,6 +132,12 @@
     <string name="settings_version">Version</string>
     <string name="settings_about_note">Unofficial community client for Hermes Studio. Generated profile pictures: avatars by Multiavatar.com.</string>
 
+    <!-- Confirmations before something you cannot take back -->
+    <string name="confirm_sign_out_title">Sign out?</string>
+    <string name="confirm_sign_out_body">The token stored on this device is removed and you will have to sign in again. Nothing on your server changes.</string>
+    <string name="confirm_restart_title">Restart the gateway?</string>
+    <string name="confirm_restart_body">%1$s stops answering while it restarts, and anything it is working on right now is interrupted.</string>
+
     <!-- Messages the app raises itself -->
     <string name="error_server_address">Enter a server address such as https://hermes.example.com</string>
     <string name="error_credentials_required">Username and password are required</string>

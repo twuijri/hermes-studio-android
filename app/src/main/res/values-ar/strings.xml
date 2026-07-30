@@ -131,6 +131,12 @@
     <string name="settings_version">الإصدار</string>
     <string name="settings_about_note">تطبيق مجتمعي غير رسمي لهرمز استديو. الصور الرمزية المولّدة من Multiavatar.com.</string>
 
+    <!-- تأكيدات قبل ما لا يمكن التراجع عنه -->
+    <string name="confirm_sign_out_title">تسجيل الخروج؟</string>
+    <string name="confirm_sign_out_body">سيُحذف الرمز المحفوظ على هذا الجهاز وستحتاج إلى تسجيل الدخول من جديد. لا يتغيّر شيء على سيرفرك.</string>
+    <string name="confirm_restart_title">إعادة تشغيل البوابة؟</string>
+    <string name="confirm_restart_body">سيتوقف %1$s عن الرد أثناء إعادة التشغيل، وسيُقطع أي عمل يقوم به الآن.</string>
+
     <!-- رسائل يصدرها التطبيق نفسه -->
     <string name="error_server_address">أدخل عنوان سيرفر مثل https://hermes.example.com</string>
     <string name="error_credentials_required">اسم المستخدم وكلمة المرور مطلوبان</string>

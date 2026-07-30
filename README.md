@@ -9,6 +9,10 @@ directly and renders a native, phone-shaped interface instead of wrapping a web 
 
 ## What works today (v0.8)
 
+- **The system back button behaves**: it walks back through the app — a conversation,
+  a room, settings, the groups tab — and only closes the app from the chat list
+- **Confirmation before anything you cannot undo**: signing out and restarting a
+  profile's gateway both ask first, naming the profile that will stop answering
 - **Arabic, with the interface mirrored** — every screen is translated, and Android
   flips the whole layout for a right-to-left language. Pick a language in Settings,
   or before you even sign in, from the globe on the first screen
@@ -55,6 +59,7 @@ directly and renders a native, phone-shaped interface instead of wrapping a web 
 | | |
 | --- | --- |
 | ![First run in Arabic](docs/screenshots/onboarding-ar.png) | ![Sign in, in Arabic](docs/screenshots/login-ar.png) |
+| ![Conversations, in Arabic](docs/screenshots/chats-ar.png) | ![A conversation, in Arabic](docs/screenshots/conversation-ar.png) |
 
 ## Install
 
@@ -120,6 +125,19 @@ gradle assembleDebug
 
 Requires JDK 17 and the Android SDK (compileSdk 34). CI builds the same target on every
 push, so a local SDK is optional.
+
+### Running it without a Studio server
+
+`tools/mock-studio.py` answers the handful of endpoints the app calls, with sample
+profiles, conversations and a room — enough to open every screen:
+
+```bash
+python3 tools/mock-studio.py
+```
+
+Sign in from a debug build at `http://10.0.2.2:8099` on an emulator, with any
+username and password. Debug builds permit plain HTTP to that host; release builds
+keep Android's default and refuse it.
 
 ## Contributing
 
