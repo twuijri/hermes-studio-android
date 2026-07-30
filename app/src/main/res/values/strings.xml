@@ -159,14 +159,29 @@
     <string name="room_hint">Message the room…</string>
     <string name="error_room_offline">Not connected to the room yet</string>
     <string name="settings_section_channels">Channels</string>
-    <string name="settings_channel_ready">connected</string>
-    <string name="settings_channel_configured">configured, not enabled</string>
-    <string name="settings_channel_missing">no credentials</string>
-    <string name="settings_channels_note">Channels are set up in Studio on your server. The app shows their state and can restart the gateway to apply changes.</string>
     <string name="settings_auto_start">Start the gateway with the server</string>
     <string name="settings_auto_start_on">on</string>
     <string name="settings_auto_start_off">off</string>
     <string name="notice_saved">Saved</string>
+
+    <string name="settings_channels">Channels</string>
+    <string name="settings_channels_summary">%1$d of %2$d set up</string>
+    <string name="channels_title">Channels</string>
+    <string name="channel_configured">set up</string>
+    <string name="channel_missing">not set up</string>
+    <string name="channel_off">turned off</string>
+    <string name="channel_enabled">Enabled</string>
+    <string name="channel_enabled_note">Hermes answers on this channel</string>
+    <string name="channel_paired_elsewhere">WhatsApp is paired by scanning a code on the server, not from here.</string>
+    <string name="channel_secret_set">stored on the server — type a new value to replace it</string>
+    <string name="channel_save">Save and restart the gateway</string>
+    <string name="channel_clear">Remove credentials</string>
+    <string name="channel_clear_title">Remove %1$s credentials?</string>
+    <string name="channel_clear_body">The stored values are deleted from the server and the channel stops answering.</string>
+    <string name="channel_note">Saving writes the values into your server and restarts the gateway so the channel picks them up.</string>
+    <string name="notice_channel_saved">%1$s saved — the gateway is restarting</string>
+    <string name="notice_channel_cleared">%1$s credentials removed</string>
+    <string name="settings_auto_start_note">When this is on, your server starts each profile’s gateway on boot, so channels answer without anyone opening Studio.</string>
 
     <!-- Confirmations before something you cannot take back -->
     <string name="confirm_sign_out_title">Sign out?</string>

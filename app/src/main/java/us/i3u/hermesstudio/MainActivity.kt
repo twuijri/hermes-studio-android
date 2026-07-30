@@ -94,6 +94,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -141,8 +142,9 @@ private fun App(viewModel: AppViewModel = viewModel()) {
     // The system back gesture belongs to the app while there is somewhere to go
     // back to. Only the two root lists let it fall through and close the app.
     when (state.screen) {
-        Screen.Conversation, Screen.Room, Screen.Profiles, Screen.Settings ->
-            BackHandler { viewModel.back() }
+        Screen.Conversation, Screen.Room, Screen.Profiles, Screen.Settings,
+        Screen.Channels, Screen.Channel,
+        -> BackHandler { viewModel.back() }
         Screen.Groups -> BackHandler { viewModel.showTab(Tab.Chats) }
         else -> Unit
     }
@@ -154,6 +156,8 @@ private fun App(viewModel: AppViewModel = viewModel()) {
             onDone = { viewModel.finishOnboarding() },
         )
         Screen.Settings -> SettingsScreen(state, viewModel)
+        Screen.Channels -> ChannelsScreen(state, viewModel)
+        Screen.Channel -> ChannelScreen(state, viewModel)
         Screen.Login -> LoginScreen(state, viewModel)
         Screen.Chats -> ChatsScreen(state, viewModel)
         Screen.Groups -> GroupsScreen(state, viewModel)
@@ -1734,29 +1738,24 @@ private fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
                     )
                 },
             )
+            Text(
+                stringResource(R.string.settings_auto_start_note),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
 
-            state.serverConfig?.channels?.takeIf { it.isNotEmpty() }?.let { channels ->
-                SettingsSection(stringResource(R.string.settings_section_channels))
-                channels.forEach { channel ->
-                    SettingsRow(
-                        icon = Icons.Filled.Hub,
-                        label = channel.platform.replaceFirstChar { it.uppercase() },
-                        value = stringResource(
-                            when {
-                                channel.enabled && channel.configured -> R.string.settings_channel_ready
-                                channel.configured -> R.string.settings_channel_configured
-                                else -> R.string.settings_channel_missing
-                            },
-                        ),
-                    )
-                }
-                Text(
-                    stringResource(R.string.settings_channels_note),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                )
-            }
+            val channels = state.serverConfig?.channels.orEmpty()
+            SettingsRow(
+                icon = Icons.Filled.Hub,
+                label = stringResource(R.string.settings_channels),
+                value = stringResource(
+                    R.string.settings_channels_summary,
+                    channels.count { it.configured },
+                    channels.size.coerceAtLeast(CHANNELS.size),
+                ),
+                onClick = { viewModel.openChannels() },
+            )
 
             SettingsSection(stringResource(R.string.settings_section_appearance))
             LogoRow(
@@ -1823,6 +1822,166 @@ private fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+            )
+        }
+    }
+}
+
+/** Every channel Hermes can speak on, and whether it is ready. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChannelsScreen(state: UiState, viewModel: AppViewModel) {
+    val known = state.serverConfig?.channels.orEmpty().associateBy { it.platform }
+    val listed = CHANNELS.map { spec -> spec to known[spec.platform] }
+
+    Scaffold(
+        topBar = {
+            StudioTopBar(
+                title = stringResource(R.string.channels_title),
+                subtitle = state.activeProfile.ifBlank { null },
+                onBack = { viewModel.back() },
+            )
+        },
+    ) { padding ->
+        Column(
+            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()),
+        ) {
+            if (state.savingSetting) LoadingRow()
+            state.error?.let { ErrorNote(it) { viewModel.dismissError() } }
+            state.notice?.let { NoticeNote(it) { viewModel.dismissNotice() } }
+
+            listed.forEach { (spec, status) ->
+                SettingsRow(
+                    icon = Icons.Filled.Hub,
+                    label = spec.label,
+                    value = stringResource(
+                        when {
+                            status?.configured == true && status.enabled -> R.string.channel_configured
+                            status?.configured == true -> R.string.channel_off
+                            else -> R.string.channel_missing
+                        },
+                    ),
+                    onClick = { viewModel.openChannel(spec.platform) },
+                )
+            }
+
+            Text(
+                stringResource(R.string.channel_note),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
+            )
+        }
+    }
+}
+
+/** One channel: its credentials, and whether Hermes answers on it. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChannelScreen(state: UiState, viewModel: AppViewModel) {
+    val platform = state.openChannel ?: return
+    val spec = channelSpec(platform)
+    val status = state.serverConfig?.channels.orEmpty().firstOrNull { it.platform == platform }
+    val values = remember(platform) { mutableStateMapOf<String, String>() }
+    var enabled by remember(platform) { mutableStateOf(status?.enabled ?: true) }
+    var confirmClear by remember(platform) { mutableStateOf(false) }
+
+    if (confirmClear) {
+        ConfirmDialog(
+            title = stringResource(R.string.channel_clear_title, spec.label),
+            body = stringResource(R.string.channel_clear_body),
+            action = stringResource(R.string.channel_clear),
+            onConfirm = { viewModel.clearChannel(platform) },
+            onDismiss = { confirmClear = false },
+        )
+    }
+
+    Scaffold(
+        topBar = {
+            StudioTopBar(
+                title = spec.label,
+                subtitle = stringResource(
+                    if (status?.configured == true) R.string.channel_configured else R.string.channel_missing,
+                ),
+                onBack = { viewModel.back() },
+            )
+        },
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .imePadding(),
+        ) {
+            if (state.savingSetting) LoadingRow()
+            state.error?.let { ErrorNote(it) { viewModel.dismissError() } }
+            state.notice?.let { NoticeNote(it) { viewModel.dismissNotice() } }
+
+            SettingsRow(
+                icon = Icons.Filled.Hub,
+                label = stringResource(R.string.channel_enabled),
+                value = stringResource(R.string.channel_enabled_note),
+                trailing = { Switch(checked = enabled, onCheckedChange = { enabled = it }) },
+            )
+
+            if (spec.pairedElsewhere) {
+                Text(
+                    stringResource(R.string.channel_paired_elsewhere),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(20.dp),
+                )
+            }
+
+            spec.fields.forEach { field ->
+                OutlinedTextField(
+                    value = values[field.path].orEmpty(),
+                    onValueChange = { values[field.path] = it },
+                    label = { Text(field.label) },
+                    placeholder = {
+                        Text(
+                            if (status?.configured == true && field.secret) {
+                                stringResource(R.string.channel_secret_set)
+                            } else {
+                                field.hint
+                            },
+                        )
+                    },
+                    singleLine = true,
+                    visualTransformation = if (field.secret) {
+                        PasswordVisualTransformation()
+                    } else {
+                        androidx.compose.ui.text.input.VisualTransformation.None
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp),
+                )
+            }
+
+            if (spec.fields.isNotEmpty()) {
+                Button(
+                    onClick = { viewModel.saveChannel(platform, values.toMap(), enabled) },
+                    enabled = !state.savingSetting,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+                ) {
+                    Text(stringResource(R.string.channel_save))
+                }
+            }
+
+            if (status?.configured == true) {
+                SettingsRow(
+                    icon = Icons.Filled.Delete,
+                    label = stringResource(R.string.channel_clear),
+                    value = stringResource(R.string.channel_clear_body),
+                    onClick = { confirmClear = true },
+                )
+            }
+
+            Text(
+                stringResource(R.string.channel_note),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
             )
         }
     }

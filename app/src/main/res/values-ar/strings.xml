@@ -158,14 +158,29 @@
     <string name="room_hint">راسل الغرفة…</string>
     <string name="error_room_offline">لم يتم الاتصال بالغرفة بعد</string>
     <string name="settings_section_channels">القنوات</string>
-    <string name="settings_channel_ready">متصلة</string>
-    <string name="settings_channel_configured">مُعدّة، غير مفعّلة</string>
-    <string name="settings_channel_missing">بلا بيانات اعتماد</string>
-    <string name="settings_channels_note">تُعدّ القنوات من الاستديو على سيرفرك. التطبيق يعرض حالتها ويقدر يعيد تشغيل البوابة لتطبيق التغييرات.</string>
     <string name="settings_auto_start">تشغيل البوابة مع السيرفر</string>
     <string name="settings_auto_start_on">مفعّل</string>
     <string name="settings_auto_start_off">معطّل</string>
     <string name="notice_saved">تم الحفظ</string>
+
+    <string name="settings_channels">القنوات</string>
+    <string name="settings_channels_summary">%1$d من %2$d مُعدّة</string>
+    <string name="channels_title">القنوات</string>
+    <string name="channel_configured">مُعدّة</string>
+    <string name="channel_missing">غير مُعدّة</string>
+    <string name="channel_off">موقوفة</string>
+    <string name="channel_enabled">مفعّلة</string>
+    <string name="channel_enabled_note">يرد هرمز على هذه القناة</string>
+    <string name="channel_paired_elsewhere">واتساب يُقترن بمسح رمز على السيرفر، لا من هنا.</string>
+    <string name="channel_secret_set">محفوظة على السيرفر — اكتب قيمة جديدة لتبديلها</string>
+    <string name="channel_save">حفظ وإعادة تشغيل البوابة</string>
+    <string name="channel_clear">حذف بيانات الاعتماد</string>
+    <string name="channel_clear_title">حذف بيانات %1$s؟</string>
+    <string name="channel_clear_body">ستُحذف القيم المحفوظة من السيرفر وتتوقف القناة عن الرد.</string>
+    <string name="channel_note">الحفظ يكتب القيم على سيرفرك ويعيد تشغيل البوابة حتى تلتقطها القناة.</string>
+    <string name="notice_channel_saved">حُفظت %1$s — البوابة تُعاد الآن</string>
+    <string name="notice_channel_cleared">حُذفت بيانات %1$s</string>
+    <string name="settings_auto_start_note">عند تفعيله يشغّل سيرفرك بوابة كل بروفايل عند الإقلاع، فترد القنوات دون أن يفتح أحد الاستديو.</string>
 
     <!-- تأكيدات قبل ما لا يمكن التراجع عنه -->
     <string name="confirm_sign_out_title">تسجيل الخروج؟</string>

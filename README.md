@@ -7,7 +7,7 @@ Not affiliated with EKKOLearnAI.
 The Studio web UI is built for the desktop, so this app talks to the same HTTP API
 directly and renders a native, phone-shaped interface instead of wrapping a web view.
 
-## What works today (v0.9)
+## What works today (v0.10)
 
 - **Replies stream in as they are written**, over the same `/chat-run` socket the
   web UI uses, with a stop button that calls the run off mid-sentence. If the
@@ -19,8 +19,12 @@ directly and renders a native, phone-shaped interface instead of wrapping a web 
 - **Manage profiles**: create, rename and delete them from the profiles screen
 - **Group chat is writable**: create a room, choose which agents are in it, post
   into it over the room socket and watch replies arrive, or delete the room
-- **Channels and gateway auto-start** in Settings: see whether Telegram, Discord
-  and the rest are connected, and choose whether the gateway starts with the server
+- **Channels are set up from the app**, on their own screen: enter a bot token (or
+  the app id, secret and the rest — each channel asks for exactly the fields the
+  server maps), turn a channel on or off, or remove its credentials. Saving writes
+  into your server and it restarts the gateway itself, so the channel comes up
+- **Gateway auto-start**, explained rather than named: whether your server brings each
+  profile's gateway up on boot, so channels answer without anyone opening Studio
 - **The system back button behaves**: it walks back through the app — a conversation,
   a room, settings, the groups tab — and only closes the app from the chat list
 - **Confirmation before anything you cannot undo**: signing out and restarting a
@@ -70,7 +74,7 @@ directly and renders a native, phone-shaped interface instead of wrapping a web 
 | | |
 | --- | --- |
 | ![Your conversations](docs/screenshots/chats.png) | ![A reply streaming in](docs/screenshots/streaming.png) |
-| ![A group room](docs/screenshots/room.png) | ![First run](docs/screenshots/onboarding.png) |
+| ![A group room](docs/screenshots/room.png) | ![Channels](docs/screenshots/channels.png) |
 
 ## Install
 
@@ -111,7 +115,8 @@ the previous version.
 | Create / rename / delete a profile | `POST /api/hermes/profiles` · `POST /api/hermes/profiles/{name}/rename` · `DELETE /api/hermes/profiles/{name}` |
 | Create / delete a room | `POST` · `DELETE /api/hermes/group-chat/rooms` |
 | Post into a room | Socket.IO `/group-chat` — `join`, `message` |
-| Channels and gateway auto-start | `GET /api/hermes/config` · `PUT /api/hermes/config` |
+| Channel state and gateway auto-start | `GET /api/hermes/config` · `PUT /api/hermes/config` |
+| Channel credentials | `PUT /api/hermes/config/credentials` · `DELETE /api/hermes/config/credentials/{platform}` |
 | App mark | `GET /logo.png` (static, cached on the device) |
 
 Both sockets authenticate with the same bearer token, passed in the Socket.IO

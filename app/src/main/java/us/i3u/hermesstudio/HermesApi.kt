@@ -156,28 +156,54 @@ class HermesApi(
         val credentials = result.optJSONObject("platformCredentialStatus")
         val channels = buildList {
             val names = LinkedHashSet<String>()
+            CHANNELS.forEach { names.add(it.platform) }
             platforms?.keys()?.forEach { names.add(it) }
             credentials?.keys()?.forEach { names.add(it) }
             names.forEach { platform ->
                 val settings = platforms?.optJSONObject(platform)
-                val status = credentials?.optJSONObject(platform)
                 add(
                     ChannelStatus(
                         platform = platform,
-                        enabled = settings?.optBoolean("enabled", false) ?: false,
-                        // No explicit status means "judge it by whether the
-                        // platform has any settings at all".
-                        configured = status?.optBoolean("configured", false)
-                            ?: ((settings?.length() ?: 0) > 0),
+                        // Hermes runs a channel unless it is explicitly turned off.
+                        enabled = settings?.optBoolean("enabled", true) ?: true,
+                        configured = credentials?.optBoolean(platform, false) ?: false,
                     ),
                 )
             }
         }
         return ServerConfig(
             defaultModel = result.optJSONObject("model")?.let { firstNonBlank(it, "default") },
-            gatewayAutoStart = result.optBoolean("gatewayAutoStart", false),
+            // The server treats anything other than an explicit false as "yes".
+            gatewayAutoStart = result.optJSONObject("gatewayAutoStart")?.optBoolean("enabled", true) ?: true,
             channels = channels,
         )
+    }
+
+    /**
+     * PUT /api/hermes/config/credentials — writes a channel's secrets into the
+     * profile's env file. The server restarts the gateway itself afterwards,
+     * which is what actually puts the channel online.
+     */
+    fun updateChannelCredentials(profile: String, platform: String, values: Map<String, String>) {
+        val payload = JSONObject()
+        val extra = JSONObject()
+        values.forEach { (path, value) ->
+            if (path.startsWith("extra.")) extra.put(path.removePrefix("extra."), value)
+            else payload.put(path, value)
+        }
+        if (extra.length() > 0) payload.put("extra", extra)
+        val body = JSONObject().put("platform", platform).put("values", payload)
+        call("/api/hermes/config/credentials?profile=${enc(profile)}", "PUT", body)
+    }
+
+    /** DELETE /api/hermes/config/credentials/{platform} */
+    fun clearChannelCredentials(profile: String, platform: String) {
+        call("/api/hermes/config/credentials/${enc(platform)}?profile=${enc(profile)}", "DELETE")
+    }
+
+    /** Turns a channel on or off without touching its credentials. */
+    fun setChannelEnabled(profile: String, platform: String, enabled: Boolean) {
+        updateConfigSection(profile, platform, JSONObject().put("enabled", enabled), restart = true)
     }
 
     /** PUT /api/hermes/config — one section at a time, as Studio does. */

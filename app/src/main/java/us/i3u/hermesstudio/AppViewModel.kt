@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-enum class Screen { Loading, Onboarding, Login, Chats, Groups, Conversation, Room, Profiles, Settings }
+enum class Screen { Loading, Onboarding, Login, Chats, Groups, Conversation, Room, Profiles, Settings, Channels, Channel }
 
 /** The two list tabs, mirroring Studio's chat / group-chat switch. */
 enum class Tab { Chats, Groups }
@@ -66,6 +66,8 @@ data class UiState(
     /** True once the room socket is carrying messages. */
     val roomLive: Boolean = false,
     val serverConfig: ServerConfig? = null,
+    /** The channel whose settings are open, if any. */
+    val openChannel: String? = null,
     val notice: String? = null,
 )
 
@@ -744,6 +746,72 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ── channels ──────────────────────────────────────────────────────────
+
+    fun openChannels() {
+        _state.update { it.copy(screen = Screen.Channels, error = null, notice = null) }
+        refreshServerConfig()
+    }
+
+    fun openChannel(platform: String) {
+        _state.update { it.copy(screen = Screen.Channel, openChannel = platform, error = null, notice = null) }
+    }
+
+    private fun refreshServerConfig() {
+        val profile = _state.value.activeProfile.ifBlank { "default" }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.serverConfig(profile) } }
+                .onSuccess { config ->
+                    _state.update { it.copy(serverConfig = config, defaultModel = config.defaultModel) }
+                }
+                .onFailure { failure -> _state.update { it.copy(error = failure.readableMessage(localized)) } }
+        }
+    }
+
+    /**
+     * Writes a channel's credentials. The server restarts the gateway itself
+     * once they land, which is what actually puts the channel online.
+     */
+    fun saveChannel(platform: String, values: Map<String, String>, enabled: Boolean) {
+        val profile = _state.value.activeProfile.ifBlank { "default" }
+        val label = channelSpec(platform).label
+        _state.update { it.copy(savingSetting = true, error = null, notice = null) }
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val filled = values.filterValues { it.isNotBlank() }
+                    if (filled.isNotEmpty()) api.updateChannelCredentials(profile, platform, filled)
+                    api.setChannelEnabled(profile, platform, enabled)
+                }
+            }.onSuccess {
+                _state.update {
+                    it.copy(savingSetting = false, notice = str(R.string.notice_channel_saved, label))
+                }
+                refreshServerConfig()
+            }.onFailure { failure ->
+                _state.update { it.copy(savingSetting = false, error = failure.readableMessage(localized)) }
+            }
+        }
+    }
+
+    fun clearChannel(platform: String) {
+        val profile = _state.value.activeProfile.ifBlank { "default" }
+        val label = channelSpec(platform).label
+        _state.update { it.copy(savingSetting = true, error = null, notice = null) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.clearChannelCredentials(profile, platform) } }
+                .onSuccess {
+                    _state.update {
+                        it.copy(savingSetting = false, notice = str(R.string.notice_channel_cleared, label))
+                    }
+                    refreshServerConfig()
+                }
+                .onFailure { failure ->
+                    _state.update { it.copy(savingSetting = false, error = failure.readableMessage(localized)) }
+                }
+        }
+    }
+
     /** Whether the gateway comes up with the server, written server-side. */
     fun setGatewayAutoStart(enabled: Boolean) {
         val profile = _state.value.activeProfile.ifBlank { "default" }
@@ -836,8 +904,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // ── misc ──────────────────────────────────────────────────────────────
 
     fun back() {
-        val target = if (_state.value.tab == Tab.Groups) Screen.Groups else Screen.Chats
-        _state.update { it.copy(screen = target, error = null) }
+        _state.update { state ->
+            val target = when (state.screen) {
+                Screen.Channel -> Screen.Channels
+                Screen.Channels -> Screen.Settings
+                else -> if (state.tab == Tab.Groups) Screen.Groups else Screen.Chats
+            }
+            state.copy(screen = target, error = null)
+        }
     }
 
     fun show(screen: Screen) = _state.update { it.copy(screen = screen, error = null) }
