@@ -64,6 +64,9 @@
     <string name="conversation_empty">أرسل رسالة إلى %1$s</string>
     <string name="conversation_your_agent">وكيلك</string>
     <string name="conversation_thinking">يفكر…</string>
+    <string name="conversation_tool">ينفّذ %1$s…</string>
+    <string name="conversation_stop">إيقاف</string>
+    <string name="reasoning_show">التفكير</string>
 
     <!-- صندوق الكتابة -->
     <string name="composer_hint">اكتب رسالة…</string>
@@ -130,6 +133,39 @@
     <string name="settings_sign_out_note">يحذف الرمز المحفوظ من هذا الجهاز</string>
     <string name="settings_version">الإصدار</string>
     <string name="settings_about_note">تطبيق مجتمعي غير رسمي لهرمز استديو. الصور الرمزية المولّدة من Multiavatar.com.</string>
+
+    <string name="action_rename">إعادة تسمية</string>
+    <string name="action_delete">حذف</string>
+    <string name="action_create">إنشاء</string>
+    <string name="action_save">حفظ</string>
+    <string name="chats_rename_title">إعادة تسمية المحادثة</string>
+    <string name="chats_delete_title">حذف هذه المحادثة؟</string>
+    <string name="chats_delete_body">ستُحذف من السيرفر نهائيًا، ولن يبقى منها شيء عند الوكيل.</string>
+    <string name="profiles_new">بروفايل جديد</string>
+    <string name="profiles_new_hint">اسم قصير، مثل research</string>
+    <string name="profiles_rename_title">إعادة تسمية البروفايل</string>
+    <string name="profiles_delete_title">حذف البروفايل %1$s؟</string>
+    <string name="profiles_delete_body">ستُحذف محادثاته وإعداداته وقنواته من السيرفر.</string>
+    <string name="notice_profile_deleted">حُذف البروفايل %1$s</string>
+    <string name="groups_new">غرفة جديدة</string>
+    <string name="groups_new_hint">ما موضوع هذه الغرفة</string>
+    <string name="groups_pick_agents">الوكلاء في الغرفة</string>
+    <string name="groups_delete_title">حذف هذه الغرفة؟</string>
+    <string name="groups_delete_body">ستُحذف الغرفة وكل ما قيل فيها من السيرفر.</string>
+    <string name="notice_room_created">أُنشئت الغرفة %1$s</string>
+    <string name="room_live">متصل</string>
+    <string name="room_offline">يعيد الاتصال…</string>
+    <string name="room_hint">راسل الغرفة…</string>
+    <string name="error_room_offline">لم يتم الاتصال بالغرفة بعد</string>
+    <string name="settings_section_channels">القنوات</string>
+    <string name="settings_channel_ready">متصلة</string>
+    <string name="settings_channel_configured">مُعدّة، غير مفعّلة</string>
+    <string name="settings_channel_missing">بلا بيانات اعتماد</string>
+    <string name="settings_channels_note">تُعدّ القنوات من الاستديو على سيرفرك. التطبيق يعرض حالتها ويقدر يعيد تشغيل البوابة لتطبيق التغييرات.</string>
+    <string name="settings_auto_start">تشغيل البوابة مع السيرفر</string>
+    <string name="settings_auto_start_on">مفعّل</string>
+    <string name="settings_auto_start_off">معطّل</string>
+    <string name="notice_saved">تم الحفظ</string>
 
     <!-- تأكيدات قبل ما لا يمكن التراجع عنه -->
     <string name="confirm_sign_out_title">تسجيل الخروج؟</string>

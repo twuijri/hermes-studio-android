@@ -22,6 +22,10 @@ data class ChatLine(
     val isError: Boolean = false,
     val timestamp: String? = null,
     val sender: String? = null,
+    /** What the model thought on the way to this answer, when it reports it. */
+    val reasoning: String? = null,
+    /** True while the words are still arriving. */
+    val streaming: Boolean = false,
 )
 
 data class UiState(
@@ -57,6 +61,11 @@ data class UiState(
     val sessionModel: String? = null,
     val defaultModel: String? = null,
     val savingSetting: Boolean = false,
+    /** The tool the agent is running right now, when it says so. */
+    val activity: String? = null,
+    /** True once the room socket is carrying messages. */
+    val roomLive: Boolean = false,
+    val serverConfig: ServerConfig? = null,
     val notice: String? = null,
 )
 
@@ -67,7 +76,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Resolves strings in the language chosen in Settings, not the phone's. */
     private val localized = AppLocale.wrap(app)
     private val api = HermesApi(store.baseUrl, store.token)
+    private val chat = ChatSocket(store.baseUrl, store.token)
+    private val group = GroupSocket(store.baseUrl, store.token)
     private val recorder = Recorder(app)
+    private var runJob: kotlinx.coroutines.Job? = null
+    private var roomJob: kotlinx.coroutines.Job? = null
 
     private val _state = MutableStateFlow(
         UiState(
@@ -99,6 +112,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun restoreSession() = launchWork(
         work = {
             api.update(store.baseUrl, store.token)
+            chat.update(store.baseUrl, store.token)
+            group.update(store.baseUrl, store.token)
             Triple(api.verifyToken(), api.profiles(), api.sessions(null))
         },
         onSuccess = { (account, profiles, sessions) ->
@@ -143,6 +158,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 store.baseUrl = normalized
                 store.token = token
                 api.update(normalized, token)
+                chat.update(normalized, token)
+                group.update(normalized, token)
                 listOf(api.verifyToken(), api.profiles(), api.sessions(null))
             },
             onSuccess = { parts ->
@@ -274,6 +291,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val profile = session?.profile?.ifBlank { null }
             ?: _state.value.activeProfile.ifBlank { "default" }
 
+        // Studio's own client names a conversation before it exists, which is
+        // what lets the very first message belong to a session.
+        val sessionId = store.sessionFor(profile).ifBlank { session?.id }
+            ?: java.util.UUID.randomUUID().toString().also { store.setSessionFor(profile, it) }
+
         val echo = if (files.isEmpty()) text else {
             listOf(text.ifBlank { null }, files.joinToString(", ") { "📎 " + it.name })
                 .filterNotNull()
@@ -285,39 +307,147 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 sending = true,
                 attachments = emptyList(),
                 error = null,
+                activity = null,
             )
         }
 
-        viewModelScope.launch {
-            val stored = store.sessionFor(profile).ifBlank { session?.id }
+        runJob = viewModelScope.launch {
+            var answer = StringBuilder()
+            var thinking = StringBuilder()
+            var streamed = false
+
             runCatching {
-                withContext(Dispatchers.IO) {
-                    api.sendMessage(
-                        profile = profile,
-                        input = text,
-                        sessionId = stored,
-                        attachments = files,
-                        reasoningEffort = _state.value.reasoningEffort,
-                    )
-                }
-            }.onSuccess { reply ->
-                reply.sessionId?.let { store.setSessionFor(profile, it) }
-                val line = if (reply.error != null && reply.output.isBlank()) {
-                    ChatLine(reply.error, fromUser = false, isError = true)
-                } else {
-                    ChatLine(reply.output, fromUser = false)
-                }
-                _state.update { it.copy(lines = it.lines + line, sending = false) }
+                chat.run(profile, sessionId, text, files, _state.value.reasoningEffort)
+                    .collect { event ->
+                        when (event) {
+                            is RunEvent.Text -> {
+                                answer.append(event.delta)
+                                if (!streamed) {
+                                    streamed = true
+                                    _state.update {
+                                        it.copy(
+                                            lines = it.lines + ChatLine("", fromUser = false, streaming = true),
+                                            activity = null,
+                                        )
+                                    }
+                                }
+                                updateLastReply(answer.toString(), thinking.toString(), streaming = true)
+                            }
+                            is RunEvent.Reasoning -> {
+                                thinking.append(event.delta)
+                                if (streamed) updateLastReply(answer.toString(), thinking.toString(), streaming = true)
+                            }
+                            is RunEvent.Tool -> _state.update { it.copy(activity = event.name) }
+                            is RunEvent.Done -> {
+                                val output = event.output.ifBlank { answer.toString() }
+                                val reasoning = event.reasoning.ifBlank { thinking.toString() }
+                                if (streamed) {
+                                    updateLastReply(output, reasoning, streaming = false)
+                                } else {
+                                    _state.update {
+                                        it.copy(
+                                            lines = it.lines + ChatLine(
+                                                text = output,
+                                                fromUser = false,
+                                                reasoning = reasoning.ifBlank { null },
+                                            ),
+                                        )
+                                    }
+                                }
+                                streamed = true
+                            }
+                            is RunEvent.Failed -> {
+                                // A socket that never got going is not a failed
+                                // run: fall back to the REST wrapper instead of
+                                // telling the user the answer is lost.
+                                if (event.beforeAnyOutput && !streamed) throw SocketUnavailable(event.error)
+                                updateLastReply(answer.toString(), thinking.toString(), streaming = false)
+                                _state.update {
+                                    it.copy(lines = it.lines + ChatLine(event.error, fromUser = false, isError = true))
+                                }
+                            }
+                        }
+                    }
             }.onFailure { failure ->
+                if (failure is SocketUnavailable) {
+                    sendOverRest(profile, sessionId, text, files)
+                    return@launch
+                }
                 _state.update {
                     it.copy(
                         lines = it.lines + ChatLine(failure.readableMessage(localized), fromUser = false, isError = true),
-                        sending = false,
                     )
                 }
             }
+            _state.update { it.copy(sending = false, activity = null) }
         }
     }
+
+    /** Older servers, or a blocked WebSocket, still answer over plain HTTP. */
+    private suspend fun sendOverRest(
+        profile: String,
+        sessionId: String,
+        text: String,
+        files: List<Upload>,
+    ) {
+        runCatching {
+            withContext(Dispatchers.IO) {
+                api.sendMessage(
+                    profile = profile,
+                    input = text,
+                    sessionId = sessionId,
+                    attachments = files,
+                    reasoningEffort = _state.value.reasoningEffort,
+                )
+            }
+        }.onSuccess { reply ->
+            reply.sessionId?.let { store.setSessionFor(profile, it) }
+            val line = if (reply.error != null && reply.output.isBlank()) {
+                ChatLine(reply.error, fromUser = false, isError = true)
+            } else {
+                ChatLine(reply.output, fromUser = false, reasoning = reply.reasoning)
+            }
+            _state.update { it.copy(lines = it.lines + line, sending = false, activity = null) }
+        }.onFailure { failure ->
+            _state.update {
+                it.copy(
+                    lines = it.lines + ChatLine(failure.readableMessage(localized), fromUser = false, isError = true),
+                    sending = false,
+                    activity = null,
+                )
+            }
+        }
+    }
+
+    private fun updateLastReply(text: String, reasoning: String, streaming: Boolean) {
+        _state.update { state ->
+            val lines = state.lines.toMutableList()
+            val index = lines.indexOfLast { !it.fromUser && !it.isError }
+            if (index < 0) return@update state
+            lines[index] = lines[index].copy(
+                text = text,
+                reasoning = reasoning.ifBlank { null },
+                streaming = streaming,
+            )
+            state.copy(lines = lines)
+        }
+    }
+
+    /** Asks the server to stop the run that is streaming right now. */
+    fun stopRun() {
+        val profile = currentProfile()
+        val sessionId = store.sessionFor(profile).ifBlank { _state.value.openSession?.id }
+        if (!sessionId.isNullOrBlank()) chat.abort(sessionId)
+        runJob?.cancel()
+        _state.update { state ->
+            val lines = state.lines.toMutableList()
+            val index = lines.indexOfLast { it.streaming }
+            if (index >= 0) lines[index] = lines[index].copy(streaming = false)
+            state.copy(lines = lines, sending = false, activity = null)
+        }
+    }
+
+    private class SocketUnavailable(message: String) : Exception(message)
 
     // ── attachments ───────────────────────────────────────────────────────
 
@@ -435,17 +565,169 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun openRoom(room: Room) {
         _state.update {
-            it.copy(screen = Screen.Room, openRoom = null, loadingHistory = true, error = null)
+            it.copy(screen = Screen.Room, openRoom = null, loadingHistory = true, error = null, roomLive = false)
         }
         launchWork(
             work = { api.room(room.id) },
             onSuccess = { detail ->
                 _state.update { it.copy(openRoom = detail, loadingHistory = false) }
+                listenToRoom(room.id)
             },
             onFailure = { failure ->
                 _state.update { it.copy(loadingHistory = false, error = failure.readableMessage(localized)) }
             },
         )
+    }
+
+    /** Keeps the open room current, and is what makes posting possible. */
+    private fun listenToRoom(roomId: String) {
+        roomJob?.cancel()
+        roomJob = viewModelScope.launch {
+            runCatching {
+                group.join(roomId, _state.value.account ?: "phone").collect { event ->
+                    when (event) {
+                        is RoomEvent.Connected -> _state.update { it.copy(roomLive = true) }
+                        is RoomEvent.Dropped -> _state.update { it.copy(roomLive = false) }
+                        is RoomEvent.Posted -> _state.update { state ->
+                            val room = state.openRoom ?: return@update state
+                            if (room.id != roomId) return@update state
+                            if (room.messages.any { it.id == event.message.id }) return@update state
+                            state.copy(openRoom = room.copy(messages = room.messages + event.message))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fun leaveRoom() {
+        roomJob?.cancel()
+        roomJob = null
+        _state.update { it.copy(roomLive = false) }
+    }
+
+    // ── conversations ─────────────────────────────────────────────────────
+
+    fun renameSession(session: SessionSummary, title: String) {
+        val clean = title.trim()
+        if (clean.isBlank()) return
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.renameSession(session.id, clean) } }
+                .onSuccess {
+                    _state.update { state ->
+                        state.copy(
+                            sessions = state.sessions.map {
+                                if (it.id == session.id) it.copy(title = clean) else it
+                            },
+                            openSession = state.openSession?.takeIf { it.id == session.id }?.copy(title = clean)
+                                ?: state.openSession,
+                        )
+                    }
+                }
+                .onFailure { failure -> _state.update { it.copy(error = failure.readableMessage(localized)) } }
+        }
+    }
+
+    fun deleteSession(session: SessionSummary) {
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.deleteSession(session.id) } }
+                .onSuccess {
+                    // Forget the pointer too, or the next message would try to
+                    // continue a conversation the server no longer has.
+                    session.profile?.let { profile ->
+                        if (store.sessionFor(profile) == session.id) store.setSessionFor(profile, "")
+                    }
+                    _state.update { state ->
+                        state.copy(sessions = state.sessions.filterNot { it.id == session.id })
+                    }
+                }
+                .onFailure { failure -> _state.update { it.copy(error = failure.readableMessage(localized)) } }
+        }
+    }
+
+    // ── profiles ──────────────────────────────────────────────────────────
+
+    fun createProfile(name: String) = profileWork(name) { api.createProfile(it) }
+
+    fun renameProfile(from: String, to: String) = profileWork(to) { api.renameProfile(from, it) }
+
+    fun deleteProfile(name: String) {
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.deleteProfile(name) } }
+                .onSuccess {
+                    if (store.profile == name) store.profile = ""
+                    refreshProfiles()
+                    _state.update { it.copy(notice = str(R.string.notice_profile_deleted, name)) }
+                }
+                .onFailure { failure -> _state.update { it.copy(error = failure.readableMessage(localized)) } }
+        }
+    }
+
+    private fun profileWork(name: String, block: suspend (String) -> Unit) {
+        val clean = name.trim()
+        if (clean.isBlank()) return
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { block(clean) } }
+                .onSuccess { refreshProfiles() }
+                .onFailure { failure -> _state.update { it.copy(error = failure.readableMessage(localized)) } }
+        }
+    }
+
+    // ── rooms ─────────────────────────────────────────────────────────────
+
+    fun createRoom(name: String, agents: List<String>) {
+        val clean = name.trim()
+        if (clean.isBlank()) return
+        // Studio requires an invite code; one the user never has to think about
+        // is better than a field they have to fill in.
+        val code = (1..6).map { INVITE_ALPHABET.random() }.joinToString("")
+        _state.update { it.copy(busy = true, error = null) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.createRoom(clean, code, agents) } }
+                .onSuccess {
+                    _state.update { it.copy(busy = false, notice = str(R.string.notice_room_created, clean)) }
+                    refreshRooms()
+                }
+                .onFailure { failure ->
+                    _state.update { it.copy(busy = false, error = failure.readableMessage(localized)) }
+                }
+        }
+    }
+
+    fun deleteRoom(room: Room) {
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.deleteRoom(room.id) } }
+                .onSuccess {
+                    _state.update { state -> state.copy(rooms = state.rooms.filterNot { it.id == room.id }) }
+                }
+                .onFailure { failure -> _state.update { it.copy(error = failure.readableMessage(localized)) } }
+        }
+    }
+
+    fun addRoomAgent(roomId: String, profile: String) {
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.addRoomAgent(roomId, profile) } }
+                .onSuccess { reopenRoom(roomId) }
+                .onFailure { failure -> _state.update { it.copy(error = failure.readableMessage(localized)) } }
+        }
+    }
+
+    private fun reopenRoom(roomId: String) {
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.room(roomId) } }
+                .onSuccess { detail -> _state.update { it.copy(openRoom = detail) } }
+        }
+    }
+
+    /** Sends into the open room over the socket the room screen holds. */
+    fun postToRoom(text: String) {
+        val room = _state.value.openRoom ?: return
+        val clean = text.trim()
+        if (clean.isBlank()) return
+        val sent = group.post(room.id, clean, _state.value.account ?: "phone")
+        if (!sent) {
+            _state.update { it.copy(error = str(R.string.error_room_offline)) }
+        }
     }
 
     // ── settings ──────────────────────────────────────────────────────────
@@ -455,8 +737,34 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         loadModels()
         val profile = _state.value.activeProfile.ifBlank { "default" }
         viewModelScope.launch {
-            runCatching { withContext(Dispatchers.IO) { api.defaultModel(profile) } }
-                .onSuccess { model -> _state.update { it.copy(defaultModel = model) } }
+            runCatching { withContext(Dispatchers.IO) { api.serverConfig(profile) } }
+                .onSuccess { config ->
+                    _state.update { it.copy(serverConfig = config, defaultModel = config.defaultModel) }
+                }
+        }
+    }
+
+    /** Whether the gateway comes up with the server, written server-side. */
+    fun setGatewayAutoStart(enabled: Boolean) {
+        val profile = _state.value.activeProfile.ifBlank { "default" }
+        val previous = _state.value.serverConfig
+        _state.update { it.copy(serverConfig = previous?.copy(gatewayAutoStart = enabled), savingSetting = true) }
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    api.updateConfigSection(
+                        profile,
+                        "gatewayAutoStart",
+                        org.json.JSONObject().put("enabled", enabled),
+                    )
+                }
+            }.onSuccess {
+                _state.update { it.copy(savingSetting = false, notice = str(R.string.notice_saved)) }
+            }.onFailure { failure ->
+                _state.update {
+                    it.copy(savingSetting = false, serverConfig = previous, error = failure.readableMessage(localized))
+                }
+            }
         }
     }
 
@@ -601,6 +909,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return runCatching { java.net.URL(withScheme) }.map { withScheme }.getOrNull()
     }
 }
+
+private val INVITE_ALPHABET = ('A'..'Z') + ('2'..'9')
 
 private fun Throwable.readableMessage(context: android.content.Context): String = when (this) {
     // A HermesException already carries what the server said, in its own words.

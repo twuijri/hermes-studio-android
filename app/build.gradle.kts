@@ -21,8 +21,8 @@ android {
         applicationId = "us.i3u.hermesstudio"
         minSdk = 26
         targetSdk = 34
-        versionCode = 12
-        versionName = "0.8.2"
+        versionCode = 13
+        versionName = "0.9.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -95,6 +95,11 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // Talks to the server's /chat-run and /group-chat namespaces, so replies
+    // stream in as they are written instead of arriving all at once.
+    implementation("io.socket:socket.io-client:2.1.2") {
+        exclude(group = "org.json", module = "json")
+    }
     // Draws the Multiavatar SVG Studio generates for a profile without a picture.
     implementation("com.caverock:androidsvg-aar:1.4")
     debugImplementation("androidx.compose.ui:ui-tooling")

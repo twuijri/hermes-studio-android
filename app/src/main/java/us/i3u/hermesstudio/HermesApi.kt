@@ -42,6 +42,7 @@ class HermesApi(
         when (method) {
             "POST" -> builder.post((body ?: JSONObject()).toString().toRequestBody(json))
             "PUT" -> builder.put((body ?: JSONObject()).toString().toRequestBody(json))
+            "DELETE" -> builder.delete()
             else -> builder.get()
         }
         return builder.build()
@@ -91,6 +92,101 @@ class HermesApi(
                 avatar = AvatarSpec.from(item.optJSONObject("avatar")),
             )
         }.filter { it.name.isNotBlank() }
+    }
+
+    /** POST /api/hermes/sessions/{id}/rename */
+    fun renameSession(sessionId: String, title: String) {
+        call("/api/hermes/sessions/${enc(sessionId)}/rename", "POST", JSONObject().put("title", title))
+    }
+
+    /** DELETE /api/hermes/sessions/{id} */
+    fun deleteSession(sessionId: String) {
+        call("/api/hermes/sessions/${enc(sessionId)}", "DELETE")
+    }
+
+    /** POST /api/hermes/profiles */
+    fun createProfile(name: String) {
+        call("/api/hermes/profiles", "POST", JSONObject().put("name", name))
+    }
+
+    /** POST /api/hermes/profiles/{name}/rename */
+    fun renameProfile(name: String, newName: String) {
+        call("/api/hermes/profiles/${enc(name)}/rename", "POST", JSONObject().put("new_name", newName))
+    }
+
+    /** DELETE /api/hermes/profiles/{name} */
+    fun deleteProfile(name: String) {
+        call("/api/hermes/profiles/${enc(name)}", "DELETE")
+    }
+
+    /**
+     * POST /api/hermes/group-chat/rooms — a room needs a name and an invite
+     * code, and the agents it starts with are profiles.
+     */
+    fun createRoom(name: String, inviteCode: String, agents: List<String>): Room {
+        val body = JSONObject()
+            .put("name", name)
+            .put("inviteCode", inviteCode)
+            .put("agents", JSONArray().apply { agents.forEach { put(JSONObject().put("profile", it)) } })
+        val result = call("/api/hermes/group-chat/rooms", "POST", body)
+        val room = result.optJSONObject("room") ?: throw HermesException("The server returned no room")
+        return Room(
+            id = firstNonBlank(room, "id") ?: throw HermesException("The new room has no id"),
+            name = firstNonBlank(room, "name") ?: name,
+            agentCount = room.optInt("agentCount", agents.size),
+            memberCount = room.optInt("memberCount", 1),
+            updatedAt = firstNonBlank(room, "updatedAt", "updated_at"),
+        )
+    }
+
+    /** DELETE /api/hermes/group-chat/rooms/{id} */
+    fun deleteRoom(roomId: String) {
+        call("/api/hermes/group-chat/rooms/${enc(roomId)}", "DELETE")
+    }
+
+    /** POST /api/hermes/group-chat/rooms/{id}/agents */
+    fun addRoomAgent(roomId: String, profile: String) {
+        call("/api/hermes/group-chat/rooms/${enc(roomId)}/agents", "POST", JSONObject().put("profile", profile))
+    }
+
+    /** GET /api/hermes/config — the pieces of it the app can act on. */
+    fun serverConfig(profile: String): ServerConfig {
+        val result = call("/api/hermes/config?profile=${enc(profile)}")
+        val platforms = result.optJSONObject("platforms")
+        val credentials = result.optJSONObject("platformCredentialStatus")
+        val channels = buildList {
+            val names = LinkedHashSet<String>()
+            platforms?.keys()?.forEach { names.add(it) }
+            credentials?.keys()?.forEach { names.add(it) }
+            names.forEach { platform ->
+                val settings = platforms?.optJSONObject(platform)
+                val status = credentials?.optJSONObject(platform)
+                add(
+                    ChannelStatus(
+                        platform = platform,
+                        enabled = settings?.optBoolean("enabled", false) ?: false,
+                        // No explicit status means "judge it by whether the
+                        // platform has any settings at all".
+                        configured = status?.optBoolean("configured", false)
+                            ?: ((settings?.length() ?: 0) > 0),
+                    ),
+                )
+            }
+        }
+        return ServerConfig(
+            defaultModel = result.optJSONObject("model")?.let { firstNonBlank(it, "default") },
+            gatewayAutoStart = result.optBoolean("gatewayAutoStart", false),
+            channels = channels,
+        )
+    }
+
+    /** PUT /api/hermes/config — one section at a time, as Studio does. */
+    fun updateConfigSection(profile: String, section: String, values: JSONObject, restart: Boolean = false) {
+        val body = JSONObject()
+            .put("section", section)
+            .put("values", values)
+            .put("restart", restart)
+        call("/api/hermes/config?profile=${enc(profile)}", "PUT", body)
     }
 
     /** GET /api/hermes/sessions — most recent conversations for a profile. */
@@ -405,6 +501,18 @@ data class RoomDetail(
     val name: String,
     val agents: List<String>,
     val messages: List<RoomMessage>,
+)
+
+data class ChannelStatus(
+    val platform: String,
+    val enabled: Boolean,
+    val configured: Boolean,
+)
+
+data class ServerConfig(
+    val defaultModel: String?,
+    val gatewayAutoStart: Boolean,
+    val channels: List<ChannelStatus>,
 )
 
 data class ChatReply(

@@ -65,6 +65,9 @@
     <string name="conversation_empty">Send a message to %1$s</string>
     <string name="conversation_your_agent">your agent</string>
     <string name="conversation_thinking">Thinking…</string>
+    <string name="conversation_tool">Running %1$s…</string>
+    <string name="conversation_stop">Stop</string>
+    <string name="reasoning_show">Reasoning</string>
 
     <!-- Composer -->
     <string name="composer_hint">Type a message…</string>
@@ -131,6 +134,39 @@
     <string name="settings_sign_out_note">Removes the stored token from this device</string>
     <string name="settings_version">Version</string>
     <string name="settings_about_note">Unofficial community client for Hermes Studio. Generated profile pictures: avatars by Multiavatar.com.</string>
+
+    <string name="action_rename">Rename</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_create">Create</string>
+    <string name="action_save">Save</string>
+    <string name="chats_rename_title">Rename conversation</string>
+    <string name="chats_delete_title">Delete this conversation?</string>
+    <string name="chats_delete_body">It is removed from the server for good. The agent keeps nothing of it.</string>
+    <string name="profiles_new">New profile</string>
+    <string name="profiles_new_hint">A short name, such as research</string>
+    <string name="profiles_rename_title">Rename profile</string>
+    <string name="profiles_delete_title">Delete profile %1$s?</string>
+    <string name="profiles_delete_body">Its conversations, settings and channels are removed from the server.</string>
+    <string name="notice_profile_deleted">Profile %1$s deleted</string>
+    <string name="groups_new">New room</string>
+    <string name="groups_new_hint">What is this room for</string>
+    <string name="groups_pick_agents">Agents in the room</string>
+    <string name="groups_delete_title">Delete this room?</string>
+    <string name="groups_delete_body">The room and everything said in it are removed from the server.</string>
+    <string name="notice_room_created">Room %1$s created</string>
+    <string name="room_live">live</string>
+    <string name="room_offline">reconnecting…</string>
+    <string name="room_hint">Message the room…</string>
+    <string name="error_room_offline">Not connected to the room yet</string>
+    <string name="settings_section_channels">Channels</string>
+    <string name="settings_channel_ready">connected</string>
+    <string name="settings_channel_configured">configured, not enabled</string>
+    <string name="settings_channel_missing">no credentials</string>
+    <string name="settings_channels_note">Channels are set up in Studio on your server. The app shows their state and can restart the gateway to apply changes.</string>
+    <string name="settings_auto_start">Start the gateway with the server</string>
+    <string name="settings_auto_start_on">on</string>
+    <string name="settings_auto_start_off">off</string>
+    <string name="notice_saved">Saved</string>
 
     <!-- Confirmations before something you cannot take back -->
     <string name="confirm_sign_out_title">Sign out?</string>

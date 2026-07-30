@@ -7,8 +7,20 @@ Not affiliated with EKKOLearnAI.
 The Studio web UI is built for the desktop, so this app talks to the same HTTP API
 directly and renders a native, phone-shaped interface instead of wrapping a web view.
 
-## What works today (v0.8)
+## What works today (v0.9)
 
+- **Replies stream in as they are written**, over the same `/chat-run` socket the
+  web UI uses, with a stop button that calls the run off mid-sentence. If the
+  socket cannot be reached the app quietly falls back to the REST wrapper, so a
+  reverse proxy that blocks WebSockets costs you the streaming, not the answer
+- **The reasoning is kept**, folded under the reply, and the composer says which
+  tool the agent is running while it works
+- **Manage conversations**: long-press to rename or delete one
+- **Manage profiles**: create, rename and delete them from the profiles screen
+- **Group chat is writable**: create a room, choose which agents are in it, post
+  into it over the room socket and watch replies arrive, or delete the room
+- **Channels and gateway auto-start** in Settings: see whether Telegram, Discord
+  and the rest are connected, and choose whether the gateway starts with the server
 - **The system back button behaves**: it walks back through the app — a conversation,
   a room, settings, the groups tab — and only closes the app from the chat list
 - **Confirmation before anything you cannot undo**: signing out and restarting a
@@ -61,6 +73,7 @@ directly and renders a native, phone-shaped interface instead of wrapping a web 
 | --- | --- |
 | ![First run in Arabic](docs/screenshots/onboarding-ar.png) | ![Sign in, in Arabic](docs/screenshots/login-ar.png) |
 | ![Conversations, in Arabic](docs/screenshots/chats-ar.png) | ![A conversation, in Arabic](docs/screenshots/conversation-ar.png) |
+| ![A reply streaming in](docs/screenshots/streaming-ar.png) | ![A group room](docs/screenshots/room-ar.png) |
 
 ## Install
 
@@ -95,12 +108,20 @@ the previous version.
 | Set a conversation's model | `POST /api/hermes/sessions/{id}/model` |
 | Profile default model | `GET /api/hermes/config` · `PUT /api/hermes/config/model` |
 | Restart a profile's gateway | `POST /api/hermes/profiles/{name}/gateway/restart` |
-| Send a message | `POST /api/chat-run/runs` |
+| Send a message (streaming) | Socket.IO `/chat-run` — `run`, `abort` |
+| Send a message (fallback) | `POST /api/chat-run/runs` |
+| Rename / delete a conversation | `POST /api/hermes/sessions/{id}/rename` · `DELETE /api/hermes/sessions/{id}` |
+| Create / rename / delete a profile | `POST /api/hermes/profiles` · `POST /api/hermes/profiles/{name}/rename` · `DELETE /api/hermes/profiles/{name}` |
+| Create / delete a room | `POST` · `DELETE /api/hermes/group-chat/rooms` |
+| Post into a room | Socket.IO `/group-chat` — `join`, `message` |
+| Channels and gateway auto-start | `GET /api/hermes/config` · `PUT /api/hermes/config` |
 | App mark | `GET /logo.png` (static, cached on the device) |
 
-`POST /api/chat-run/runs` is the server's own REST wrapper around its Socket.IO chat
-channel, which is what lets a mobile client get a complete answer without implementing
-the streaming protocol.
+Both sockets authenticate with the same bearer token, passed in the Socket.IO
+handshake (`auth.token`) rather than a header. `POST /api/chat-run/runs` is the
+server's own REST wrapper around `/chat-run`: the app uses it whenever the socket
+cannot connect, which is why the app still works behind a proxy that drops
+WebSocket upgrades.
 
 All traffic goes to the address you enter, over HTTPS. Nothing is sent anywhere else and
 there is no analytics. The app asks for `INTERNET`, plus `RECORD_AUDIO` and `CAMERA` only
@@ -109,12 +130,9 @@ written to the app cache, uploaded, and deleted immediately.
 
 ## Roadmap
 
-- Creating a group room from the app, and posting into one
-- Show the reasoning text a run returns, collapsed under each reply
+- Answering an approval request the agent raises mid-run
 - Editing a profile's avatar from the app, not only reading it
-- Profile-level settings, not just per conversation
-- Posting into group chat rooms, not just reading them
-- Streaming replies (Socket.IO) instead of waiting for the final answer
+- Voice settings (STT and TTS providers) from the app
 - Push notifications for finished runs
 - Kanban and scheduled jobs, read-only first
 
@@ -129,8 +147,10 @@ push, so a local SDK is optional.
 
 ### Running it without a Studio server
 
-`tools/mock-studio.py` answers the handful of endpoints the app calls, with sample
-profiles, conversations and a room — enough to open every screen:
+`tools/mock-studio.py` answers the handful of REST endpoints the app calls, with
+sample profiles, conversations and a room — enough to open every screen. It does not
+speak Socket.IO, which makes it a good way to exercise the REST fallback: messages
+still get answered, just not word by word.
 
 ```bash
 python3 tools/mock-studio.py

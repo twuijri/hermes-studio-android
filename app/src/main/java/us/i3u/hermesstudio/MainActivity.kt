@@ -13,7 +13,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -58,6 +60,10 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -78,6 +84,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -86,6 +93,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -228,6 +236,48 @@ private fun LoginScreen(state: UiState, viewModel: AppViewModel) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ChatsScreen(state: UiState, viewModel: AppViewModel) {
+    var manage by remember { mutableStateOf<SessionSummary?>(null) }
+    var rename by remember { mutableStateOf<SessionSummary?>(null) }
+    var confirmDelete by remember { mutableStateOf<SessionSummary?>(null) }
+
+    manage?.let { session ->
+        ModalBottomSheet(
+            onDismissRequest = { manage = null },
+            sheetState = rememberModalBottomSheetState(),
+        ) {
+            SheetTitle(session.title)
+            ManageSheet(
+                onRename = {
+                    manage = null
+                    rename = session
+                },
+                onDelete = {
+                    manage = null
+                    confirmDelete = session
+                },
+            )
+        }
+    }
+    rename?.let { session ->
+        TextPromptDialog(
+            title = stringResource(R.string.chats_rename_title),
+            initial = session.title,
+            hint = session.title,
+            action = stringResource(R.string.action_rename),
+            onConfirm = { viewModel.renameSession(session, it) },
+            onDismiss = { rename = null },
+        )
+    }
+    confirmDelete?.let { session ->
+        ConfirmDialog(
+            title = stringResource(R.string.chats_delete_title),
+            body = stringResource(R.string.chats_delete_body),
+            action = stringResource(R.string.action_delete),
+            onConfirm = { viewModel.deleteSession(session) },
+            onDismiss = { confirmDelete = null },
+        )
+    }
+
     Scaffold(
         topBar = {
             StudioTopBar(
@@ -263,9 +313,12 @@ private fun ChatsScreen(state: UiState, viewModel: AppViewModel) {
                 SectionHeader(stringResource(R.string.chats_section), state.sessions.size)
                 LazyColumn {
                     items(state.sessions) { session ->
-                        SessionRow(session, state.avatarOf(session.profile)) {
-                            viewModel.openSession(session)
-                        }
+                        SessionRow(
+                            session = session,
+                            avatar = state.avatarOf(session.profile),
+                            onClick = { viewModel.openSession(session) },
+                            onLongClick = { manage = session },
+                        )
                         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
                     }
                 }
@@ -274,12 +327,18 @@ private fun ChatsScreen(state: UiState, viewModel: AppViewModel) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun SessionRow(session: SessionSummary, avatar: AvatarSpec?, onClick: () -> Unit) {
+private fun SessionRow(
+    session: SessionSummary,
+    avatar: AvatarSpec?,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -367,14 +426,37 @@ private fun ProfileFilterRow(state: UiState, viewModel: AppViewModel) {
 
 // ── group rooms ──────────────────────────────────────────────────────────
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun GroupsScreen(state: UiState, viewModel: AppViewModel) {
+    var creating by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf<Room?>(null) }
+
+    if (creating) {
+        NewRoomDialog(
+            profiles = state.profiles.map { it.name },
+            onCreate = { name, agents -> viewModel.createRoom(name, agents) },
+            onDismiss = { creating = false },
+        )
+    }
+    confirmDelete?.let { room ->
+        ConfirmDialog(
+            title = stringResource(R.string.groups_delete_title),
+            body = stringResource(R.string.groups_delete_body),
+            action = stringResource(R.string.action_delete),
+            onConfirm = { viewModel.deleteRoom(room) },
+            onDismiss = { confirmDelete = null },
+        )
+    }
+
     Scaffold(
         topBar = {
             StudioTopBar(
                 title = stringResource(R.string.groups_title),
                 actions = {
+                    IconButton(onClick = { creating = true }) {
+                        Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.groups_new))
+                    }
                     IconButton(onClick = { viewModel.refreshRooms() }) {
                         Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.action_refresh))
                     }
@@ -396,7 +478,10 @@ private fun GroupsScreen(state: UiState, viewModel: AppViewModel) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { viewModel.openRoom(room) }
+                                .combinedClickable(
+                                    onClick = { viewModel.openRoom(room) },
+                                    onLongClick = { confirmDelete = room },
+                                )
                                 .padding(horizontal = 16.dp, vertical = 12.dp),
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
@@ -428,27 +513,108 @@ private fun GroupsScreen(state: UiState, viewModel: AppViewModel) {
     }
 }
 
+/** Name the room, and choose which agents are in it. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun NewRoomDialog(
+    profiles: List<String>,
+    onCreate: (String, List<String>) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var name by remember { mutableStateOf("") }
+    val chosen = remember { mutableStateListOf<String>() }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.groups_new)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    placeholder = { Text(stringResource(R.string.groups_new_hint)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    stringResource(R.string.groups_pick_agents),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    profiles.forEach { profile ->
+                        val selected = profile in chosen
+                        AssistChip(
+                            onClick = { if (selected) chosen.remove(profile) else chosen.add(profile) },
+                            label = { Text(profile) },
+                            leadingIcon = if (selected) {
+                                { Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                            } else {
+                                null
+                            },
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = name.isNotBlank(),
+                onClick = {
+                    onDismiss()
+                    onCreate(name.trim(), chosen.toList())
+                },
+            ) { Text(stringResource(R.string.action_create)) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun RoomScreen(state: UiState, viewModel: AppViewModel) {
     val room = state.openRoom
+    var draft by rememberSaveable { mutableStateOf("") }
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(room?.messages?.size) {
+        val count = room?.messages?.size ?: 0
+        if (count > 0) listState.animateScrollToItem(count - 1)
+    }
+
     Scaffold(
         topBar = {
             StudioTopBar(
                 title = room?.name ?: stringResource(R.string.room_title),
-                subtitle = room?.agents?.takeIf { it.isNotEmpty() }?.joinToString(", "),
-                onBack = { viewModel.back() },
+                subtitle = listOfNotNull(
+                    room?.agents?.takeIf { it.isNotEmpty() }?.joinToString(", "),
+                    stringResource(if (state.roomLive) R.string.room_live else R.string.room_offline),
+                ).joinToString(" · "),
+                onBack = {
+                    viewModel.leaveRoom()
+                    viewModel.back()
+                },
             )
         },
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+        Column(modifier = Modifier.fillMaxSize().padding(padding).imePadding()) {
             if (state.loadingHistory) LoadingRow()
             state.error?.let { ErrorNote(it) { viewModel.dismissError() } }
             val messages = room?.messages.orEmpty()
             if (!state.loadingHistory && messages.isEmpty()) {
-                EmptyNote(stringResource(R.string.room_empty))
+                Box(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        stringResource(R.string.room_empty),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             LazyColumn(
+                state = listState,
+                modifier = (if (messages.isEmpty()) Modifier else Modifier.weight(1f)).fillMaxWidth(),
                 contentPadding = PaddingValues(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -460,7 +626,57 @@ private fun RoomScreen(state: UiState, viewModel: AppViewModel) {
                             timestamp = message.timestamp,
                             sender = message.sender,
                         ),
+                        profile = message.sender.takeIf { message.isAgent },
+                        avatar = state.avatarOf(message.sender.takeIf { message.isAgent }),
                     )
+                }
+            }
+
+            // Rooms have no REST endpoint for posting: this rides the socket.
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                OutlinedTextField(
+                    value = draft,
+                    onValueChange = { draft = it },
+                    placeholder = { Text(stringResource(R.string.room_hint)) },
+                    modifier = Modifier.weight(1f),
+                    maxLines = 4,
+                    shape = RoundedCornerShape(20.dp),
+                )
+                Box(
+                    modifier = Modifier
+                        .padding(bottom = 4.dp)
+                        .size(46.dp)
+                        .clip(RoundedCornerShape(23.dp))
+                        .background(
+                            if (draft.isNotBlank()) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant
+                            },
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    IconButton(
+                        onClick = {
+                            viewModel.postToRoom(draft)
+                            draft = ""
+                        },
+                        enabled = draft.isNotBlank(),
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Send,
+                            contentDescription = stringResource(R.string.composer_send),
+                            tint = if (draft.isNotBlank()) {
+                                MaterialTheme.colorScheme.onPrimary
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -549,7 +765,11 @@ private fun ConversationScreen(state: UiState, viewModel: AppViewModel) {
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     CircularProgressIndicator(modifier = Modifier.size(14.dp))
-                    Text(stringResource(R.string.conversation_thinking), style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        state.activity?.let { stringResource(R.string.conversation_tool, it) }
+                            ?: stringResource(R.string.conversation_thinking),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
             }
 
@@ -594,7 +814,10 @@ private fun MessageBubble(line: ChatLine, profile: String? = null, avatar: Avata
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Text(text = line.text)
+                    if (line.text.isNotBlank()) Text(text = line.text)
+                    line.reasoning?.takeIf { it.isNotBlank() }?.let { thinking ->
+                        ReasoningNote(thinking)
+                    }
                     val stamp = formatStamp(line.timestamp)
                     if (stamp.isNotBlank()) {
                         Text(
@@ -609,12 +832,102 @@ private fun MessageBubble(line: ChatLine, profile: String? = null, avatar: Avata
     }
 }
 
+/** The model's own account of how it got there, folded away until asked for. */
+@Composable
+private fun ReasoningNote(reasoning: String) {
+    var open by rememberSaveable { mutableStateOf(false) }
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.clickable { open = !open }.padding(vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(
+                Icons.Filled.Psychology,
+                contentDescription = null,
+                modifier = Modifier.size(14.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                stringResource(R.string.reasoning_show),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                if (open) "⌃" else "⌄",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (open) {
+            Text(
+                reasoning,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
+            )
+        }
+    }
+}
+
 // ── profiles ─────────────────────────────────────────────────────────────
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun ProfilesScreen(state: UiState, viewModel: AppViewModel) {
     var confirmSignOut by remember { mutableStateOf(false) }
+    var manage by remember { mutableStateOf<Profile?>(null) }
+    var rename by remember { mutableStateOf<Profile?>(null) }
+    var confirmDelete by remember { mutableStateOf<Profile?>(null) }
+    var creating by remember { mutableStateOf(false) }
+
+    manage?.let { profile ->
+        ModalBottomSheet(
+            onDismissRequest = { manage = null },
+            sheetState = rememberModalBottomSheetState(),
+        ) {
+            SheetTitle(profile.name)
+            ManageSheet(
+                onRename = {
+                    manage = null
+                    rename = profile
+                },
+                onDelete = {
+                    manage = null
+                    confirmDelete = profile
+                },
+            )
+        }
+    }
+    rename?.let { profile ->
+        TextPromptDialog(
+            title = stringResource(R.string.profiles_rename_title),
+            initial = profile.name,
+            hint = profile.name,
+            action = stringResource(R.string.action_rename),
+            onConfirm = { viewModel.renameProfile(profile.name, it) },
+            onDismiss = { rename = null },
+        )
+    }
+    confirmDelete?.let { profile ->
+        ConfirmDialog(
+            title = stringResource(R.string.profiles_delete_title, profile.name),
+            body = stringResource(R.string.profiles_delete_body),
+            action = stringResource(R.string.action_delete),
+            onConfirm = { viewModel.deleteProfile(profile.name) },
+            onDismiss = { confirmDelete = null },
+        )
+    }
+    if (creating) {
+        TextPromptDialog(
+            title = stringResource(R.string.profiles_new),
+            initial = "",
+            hint = stringResource(R.string.profiles_new_hint),
+            action = stringResource(R.string.action_create),
+            onConfirm = { viewModel.createProfile(it) },
+            onDismiss = { creating = false },
+        )
+    }
     if (confirmSignOut) {
         ConfirmDialog(
             title = stringResource(R.string.confirm_sign_out_title),
@@ -632,6 +945,9 @@ private fun ProfilesScreen(state: UiState, viewModel: AppViewModel) {
                 subtitle = state.account?.let { stringResource(R.string.profiles_signed_in, it) },
                 onBack = { viewModel.back() },
                 actions = {
+                    IconButton(onClick = { creating = true }) {
+                        Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.profiles_new))
+                    }
                     IconButton(onClick = { viewModel.refreshProfiles() }) {
                         Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.action_refresh))
                     }
@@ -650,7 +966,10 @@ private fun ProfilesScreen(state: UiState, viewModel: AppViewModel) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { viewModel.selectProfile(profile.name) }
+                            .combinedClickable(
+                                onClick = { viewModel.selectProfile(profile.name) },
+                                onLongClick = { manage = profile },
+                            )
                             .padding(horizontal = 16.dp, vertical = 14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -899,12 +1218,12 @@ private fun SendOrRecordButton(
     onRecord: () -> Unit,
 ) {
     val hasPayload = draft.isNotBlank() || state.attachments.isNotEmpty()
-    val background = if (hasPayload || state.recording) {
+    val background = if (hasPayload || state.recording || state.sending) {
         MaterialTheme.colorScheme.primary
     } else {
         MaterialTheme.colorScheme.surfaceVariant
     }
-    val tint = if (hasPayload || state.recording) {
+    val tint = if (hasPayload || state.recording || state.sending) {
         MaterialTheme.colorScheme.onPrimary
     } else {
         MaterialTheme.colorScheme.onSurface
@@ -921,6 +1240,10 @@ private fun SendOrRecordButton(
         when {
             state.recording -> IconButton(onClick = { viewModel.stopRecordingAndTranscribe() }) {
                 Icon(Icons.Filled.Stop, contentDescription = stringResource(R.string.composer_stop), tint = tint)
+            }
+            // A streaming run can be called off, so the button becomes a stop.
+            state.sending -> IconButton(onClick = { viewModel.stopRun() }) {
+                Icon(Icons.Filled.Stop, contentDescription = stringResource(R.string.conversation_stop), tint = tint)
             }
             hasPayload -> IconButton(onClick = onSend, enabled = !state.sending) {
                 Icon(Icons.AutoMirrored.Filled.Send, contentDescription = stringResource(R.string.composer_send), tint = tint)
@@ -1140,6 +1463,68 @@ private fun readAndAttach(
 
 private enum class ConfirmAction { SignOut, RestartGateway }
 
+/** One text field, one button: rename a thing, or name a new one. */
+@Composable
+private fun TextPromptDialog(
+    title: String,
+    initial: String,
+    hint: String,
+    action: String,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var value by remember { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            OutlinedTextField(
+                value = value,
+                onValueChange = { value = it },
+                placeholder = { Text(hint) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = {
+            TextButton(
+                enabled = value.isNotBlank(),
+                onClick = {
+                    onDismiss()
+                    onConfirm(value.trim())
+                },
+            ) { Text(action) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        },
+    )
+}
+
+/** The rename / delete pair, shared by conversations, profiles and rooms. */
+@Composable
+private fun ManageSheet(
+    onRename: (() -> Unit)?,
+    onDelete: () -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 28.dp)) {
+        onRename?.let {
+            SheetRow(
+                icon = Icons.Filled.Edit,
+                label = stringResource(R.string.action_rename),
+                detail = "",
+                onClick = it,
+            )
+        }
+        SheetRow(
+            icon = Icons.Filled.Delete,
+            label = stringResource(R.string.action_delete),
+            detail = "",
+            onClick = onDelete,
+        )
+    }
+}
+
 /** Stands between a stray tap and something that cannot be undone. */
 @Composable
 private fun ConfirmDialog(
@@ -1332,6 +1717,47 @@ private fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
                 onClick = { confirm = ConfirmAction.RestartGateway },
             )
 
+            SettingsRow(
+                icon = Icons.Filled.PowerSettingsNew,
+                label = stringResource(R.string.settings_auto_start),
+                value = stringResource(
+                    if (state.serverConfig?.gatewayAutoStart == true) {
+                        R.string.settings_auto_start_on
+                    } else {
+                        R.string.settings_auto_start_off
+                    },
+                ),
+                trailing = {
+                    Switch(
+                        checked = state.serverConfig?.gatewayAutoStart == true,
+                        onCheckedChange = { viewModel.setGatewayAutoStart(it) },
+                    )
+                },
+            )
+
+            state.serverConfig?.channels?.takeIf { it.isNotEmpty() }?.let { channels ->
+                SettingsSection(stringResource(R.string.settings_section_channels))
+                channels.forEach { channel ->
+                    SettingsRow(
+                        icon = Icons.Filled.Hub,
+                        label = channel.platform.replaceFirstChar { it.uppercase() },
+                        value = stringResource(
+                            when {
+                                channel.enabled && channel.configured -> R.string.settings_channel_ready
+                                channel.configured -> R.string.settings_channel_configured
+                                else -> R.string.settings_channel_missing
+                            },
+                        ),
+                    )
+                }
+                Text(
+                    stringResource(R.string.settings_channels_note),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                )
+            }
+
             SettingsSection(stringResource(R.string.settings_section_appearance))
             LogoRow(
                 value = stringResource(
@@ -1418,6 +1844,7 @@ private fun SettingsRow(
     label: String,
     value: String,
     onClick: (() -> Unit)? = null,
+    trailing: @Composable (() -> Unit)? = null,
 ) {
     Row(
         modifier = Modifier
@@ -1438,8 +1865,9 @@ private fun SettingsRow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        if (onClick != null) {
-            Text("›", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        when {
+            trailing != null -> trailing()
+            onClick != null -> Text("›", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
     HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))

@@ -11,6 +11,10 @@ Then sign in from a debug build with any username and password:
 
 Debug builds allow plain HTTP to those two hosts (see
 app/src/debug/res/xml/network_security_config.xml); release builds do not.
+
+This mock speaks REST only. The app tries the /chat-run socket first and falls
+back to POST /api/chat-run/runs when it cannot connect, so running against this
+file exercises that fallback rather than streaming.
 """
 import base64, json, re, time
 from http.server import BaseHTTPRequestHandler, HTTPServer
