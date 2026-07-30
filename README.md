@@ -7,8 +7,14 @@ Not affiliated with EKKOLearnAI.
 The Studio web UI is built for the desktop, so this app talks to the same HTTP API
 directly and renders a native, phone-shaped interface instead of wrapping a web view.
 
-## What works today (v0.7)
+## What works today (v0.8)
 
+- **Arabic, with the interface mirrored** — every screen is translated, and Android
+  flips the whole layout for a right-to-left language. Pick a language in Settings,
+  or before you even sign in, from the globe on the first screen
+- **A translation structure built for more languages**: one file of strings, one line
+  to offer it, and a test that fails the build on a missing key or a broken
+  placeholder — see [docs/adding-a-language.md](docs/adding-a-language.md)
 - **The same profile pictures Studio shows**: an uploaded avatar, or the Multiavatar
   generated from the profile name — rendered on the device and cached, so a launch
   draws them from disk instead of pulling them again
@@ -43,6 +49,12 @@ directly and renders a native, phone-shaped interface instead of wrapping a web 
 - Profiles screen to switch which agent a new chat talks to
 - Start a fresh conversation at any time
 - Studio's dark palette, RTL-aware layout (Arabic reads correctly)
+
+## Screenshots
+
+| | |
+| --- | --- |
+| ![First run in Arabic](docs/screenshots/onboarding-ar.png) | ![Sign in, in Arabic](docs/screenshots/login-ar.png) |
 
 ## Install
 
@@ -91,6 +103,7 @@ written to the app cache, uploaded, and deleted immediately.
 
 ## Roadmap
 
+- Creating a group room from the app, and posting into one
 - Show the reasoning text a run returns, collapsed under each reply
 - Editing a profile's avatar from the app, not only reading it
 - Profile-level settings, not just per conversation
@@ -110,9 +123,14 @@ push, so a local SDK is optional.
 
 ## Contributing
 
-Issues and pull requests are welcome — this is meant to be a community client. If you
-want to port the same API layer to iOS, `HermesApi.kt` is a single self-contained file
-that documents every call the app makes.
+Issues and pull requests are welcome — this is meant to be a community client.
+
+**Translating it** is the easiest place to start and needs no Kotlin: copy one XML
+file, translate it, add two lines. [docs/adding-a-language.md](docs/adding-a-language.md)
+walks through it, and `gradle test` checks your work.
+
+If you want to port the same API layer to iOS, `HermesApi.kt` is a single
+self-contained file that documents every call the app makes.
 
 ## Credits
 

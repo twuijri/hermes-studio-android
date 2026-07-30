@@ -1,5 +1,6 @@
 package us.i3u.hermesstudio
 
+import androidx.annotation.StringRes
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -36,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
@@ -54,10 +56,10 @@ fun LoadingScreen(baseUrl: String) {
         ) {
             AppMark()
             Spacer(Modifier.height(24.dp))
-            Text("Hermes Studio", style = MaterialTheme.typography.headlineSmall)
+            Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.height(6.dp))
             Text(
-                baseUrl.ifBlank { "Restoring your session…" },
+                baseUrl.ifBlank { stringResource(R.string.intro_restoring) },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -69,47 +71,52 @@ fun LoadingScreen(baseUrl: String) {
 
 private data class IntroPage(
     val icon: ImageVector,
-    val title: String,
-    val body: String,
-    val points: List<String> = emptyList(),
+    @StringRes val title: Int,
+    @StringRes val body: Int,
+    val points: List<Int> = emptyList(),
 )
 
 private val INTRO_PAGES = listOf(
     IntroPage(
         icon = Icons.Filled.Chat,
-        title = "Your agents, on your phone",
-        body = "A native client for Hermes Studio. Read your conversations, keep talking to your agents, attach photos and files, and dictate with your voice.",
+        title = R.string.intro_chat_title,
+        body = R.string.intro_chat_body,
     ),
     IntroPage(
         icon = Icons.Filled.Dns,
-        title = "You bring the server",
-        body = "This app is only the front end. It needs a Hermes Studio server that you run and control — there is no hosted service behind it.",
+        title = R.string.intro_server_title,
+        body = R.string.intro_server_body,
         points = listOf(
-            "Install Hermes Studio on a machine or VPS you own",
-            "Make it reachable over HTTPS, for example https://hermes.example.com",
-            "Come back here with that address and your login",
+            R.string.intro_server_step_install,
+            R.string.intro_server_step_https,
+            R.string.intro_server_step_return,
         ),
     ),
     IntroPage(
         icon = Icons.Filled.Lock,
-        title = "Nothing leaves your server",
-        body = "Your address, token and messages go only to the server you enter. The token is stored encrypted on this device, and the app carries no analytics.",
+        title = R.string.intro_privacy_title,
+        body = R.string.intro_privacy_body,
     ),
 )
 
 /** First-run walkthrough: what the app is, and that a server is required. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun OnboardingScreen(onDone: () -> Unit) {
+fun OnboardingScreen(languageAction: @Composable () -> Unit = {}, onDone: () -> Unit) {
     val pagerState = rememberPagerState(pageCount = { INTRO_PAGES.size })
     val scope = rememberCoroutineScope()
     val isLast = pagerState.currentPage == INTRO_PAGES.lastIndex
 
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().padding(horizontal = 28.dp, vertical = 32.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                languageAction()
                 if (!isLast) {
-                    TextButton(onClick = onDone) { Text("Skip") }
+                    TextButton(onClick = onDone) { Text(stringResource(R.string.action_skip)) }
                 } else {
                     Spacer(Modifier.height(1.dp))
                 }
@@ -141,13 +148,13 @@ fun OnboardingScreen(onDone: () -> Unit) {
                     }
                     Spacer(Modifier.height(28.dp))
                     Text(
-                        page.title,
+                        stringResource(page.title),
                         style = MaterialTheme.typography.headlineSmall,
                         textAlign = TextAlign.Center,
                     )
                     Spacer(Modifier.height(12.dp))
                     Text(
-                        page.body,
+                        stringResource(page.body),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
@@ -175,7 +182,7 @@ fun OnboardingScreen(onDone: () -> Unit) {
                                     }
                                     Spacer(Modifier.width(12.dp))
                                     Text(
-                                        point,
+                                        stringResource(point),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
@@ -211,7 +218,7 @@ fun OnboardingScreen(onDone: () -> Unit) {
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(if (isLast) "Connect my server" else "Next")
+                Text(stringResource(if (isLast) R.string.intro_cta else R.string.action_next))
             }
         }
     }

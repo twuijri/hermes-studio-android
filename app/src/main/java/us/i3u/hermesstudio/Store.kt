@@ -51,6 +51,11 @@ class Store(context: Context) {
         get() = prefs.getBoolean(KEY_ONBOARDED, false)
         set(value) = prefs.edit().putBoolean(KEY_ONBOARDED, value).apply()
 
+    /** BCP-47 tag chosen in Settings; blank means "follow the system". */
+    var language: String
+        get() = prefs.getString(KEY_LANGUAGE, "").orEmpty()
+        set(value) = prefs.edit().putString(KEY_LANGUAGE, value).apply()
+
     var reasoningEffort: String
         get() = prefs.getString(KEY_REASONING, "").orEmpty()
         set(value) = prefs.edit().putString(KEY_REASONING, value).apply()
@@ -71,5 +76,6 @@ class Store(context: Context) {
         const val KEY_SESSION_PREFIX = "session_"
         const val KEY_REASONING = "reasoning_effort"
         const val KEY_ONBOARDED = "onboarded"
+        const val KEY_LANGUAGE = "language"
     }
 }

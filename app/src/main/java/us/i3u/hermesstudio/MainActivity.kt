@@ -1,6 +1,7 @@
 package us.i3u.hermesstudio
 
 import android.Manifest
+import android.app.Activity
 import android.content.Context
 import android.net.Uri
 import android.os.Bundle
@@ -55,6 +56,7 @@ import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -92,6 +94,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.core.content.FileProvider
 import java.io.File
 import androidx.compose.ui.text.font.FontWeight
@@ -104,6 +107,12 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 class MainActivity : ComponentActivity() {
+
+    /** Applies the language chosen in Settings before any screen is built. */
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(AppLocale.wrap(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -121,7 +130,10 @@ private fun App(viewModel: AppViewModel = viewModel()) {
 
     when (state.screen) {
         Screen.Loading -> LoadingScreen(state.baseUrl)
-        Screen.Onboarding -> OnboardingScreen(onDone = { viewModel.finishOnboarding() })
+        Screen.Onboarding -> OnboardingScreen(
+            languageAction = { LanguageAction(state, viewModel) },
+            onDone = { viewModel.finishOnboarding() },
+        )
         Screen.Settings -> SettingsScreen(state, viewModel)
         Screen.Login -> LoginScreen(state, viewModel)
         Screen.Chats -> ChatsScreen(state, viewModel)
@@ -141,7 +153,14 @@ private fun LoginScreen(state: UiState, viewModel: AppViewModel) {
     var username by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
 
-    Scaffold(topBar = { StudioTopBar("Hermes Studio") }) { padding ->
+    Scaffold(
+        topBar = {
+            StudioTopBar(
+                title = stringResource(R.string.app_name),
+                actions = { LanguageAction(state, viewModel) },
+            )
+        },
+    ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -150,12 +169,12 @@ private fun LoginScreen(state: UiState, viewModel: AppViewModel) {
                 .imePadding(),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Connect to your server", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.login_title), style = MaterialTheme.typography.titleMedium)
             OutlinedTextField(
                 value = url,
                 onValueChange = { url = it },
-                label = { Text("Server address") },
-                placeholder = { Text("https://hermes.example.com") },
+                label = { Text(stringResource(R.string.login_server_label)) },
+                placeholder = { Text(stringResource(R.string.login_server_hint)) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 modifier = Modifier.fillMaxWidth(),
@@ -163,14 +182,14 @@ private fun LoginScreen(state: UiState, viewModel: AppViewModel) {
             OutlinedTextField(
                 value = username,
                 onValueChange = { username = it },
-                label = { Text("Username") },
+                label = { Text(stringResource(R.string.login_username)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
             OutlinedTextField(
                 value = password,
                 onValueChange = { password = it },
-                label = { Text("Password") },
+                label = { Text(stringResource(R.string.login_password)) },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
@@ -181,11 +200,11 @@ private fun LoginScreen(state: UiState, viewModel: AppViewModel) {
                 enabled = !state.busy,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(if (state.busy) "Connecting…" else "Sign in")
+                Text(stringResource(if (state.busy) R.string.login_submitting else R.string.login_submit))
             }
             state.error?.let { ErrorNote(it) { viewModel.dismissError() } }
             Text(
-                "Credentials are stored encrypted on this device and sent only to the address above.",
+                stringResource(R.string.login_note),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -201,20 +220,20 @@ private fun ChatsScreen(state: UiState, viewModel: AppViewModel) {
     Scaffold(
         topBar = {
             StudioTopBar(
-                title = "Chats",
+                title = stringResource(R.string.chats_title),
                 leading = { AppMark(size = 30.dp, corner = 9.dp) },
                 actions = {
                     IconButton(onClick = { viewModel.startNewConversation() }) {
-                        Icon(Icons.Filled.Add, contentDescription = "New chat")
+                        Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.action_new_chat))
                     }
                     IconButton(onClick = { viewModel.refreshSessions() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
+                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.action_refresh))
                     }
                     IconButton(onClick = { viewModel.show(Screen.Profiles) }) {
-                        Icon(Icons.Filled.Person, contentDescription = "Profiles")
+                        Icon(Icons.Filled.Person, contentDescription = stringResource(R.string.action_profiles))
                     }
                     IconButton(onClick = { viewModel.openSettings() }) {
-                        Icon(Icons.Filled.Settings, contentDescription = "Settings")
+                        Icon(Icons.Filled.Settings, contentDescription = stringResource(R.string.action_settings))
                     }
                 },
             )
@@ -228,9 +247,9 @@ private fun ChatsScreen(state: UiState, viewModel: AppViewModel) {
             state.error?.let { ErrorNote(it) { viewModel.dismissError() } }
 
             if (!state.busy && state.sessions.isEmpty()) {
-                EmptyNote("No conversations yet")
+                EmptyNote(stringResource(R.string.chats_empty))
             } else {
-                SectionHeader("CONVERSATIONS", state.sessions.size)
+                SectionHeader(stringResource(R.string.chats_section), state.sessions.size)
                 LazyColumn {
                     items(state.sessions) { session ->
                         SessionRow(session, state.avatarOf(session.profile)) {
@@ -298,7 +317,7 @@ private fun UiState.avatarOf(profile: String?): AvatarSpec? {
 @Composable
 private fun ProfileFilterRow(state: UiState, viewModel: AppViewModel) {
     var open by remember { mutableStateOf(false) }
-    val label = state.profileFilter.ifBlank { "All profiles" }
+    val label = state.profileFilter.ifBlank { stringResource(R.string.chats_all_profiles) }
 
     Box(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
         Card(
@@ -316,7 +335,7 @@ private fun ProfileFilterRow(state: UiState, viewModel: AppViewModel) {
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             DropdownMenuItem(
-                text = { Text("All profiles") },
+                text = { Text(stringResource(R.string.chats_all_profiles)) },
                 onClick = {
                     open = false
                     viewModel.setProfileFilter("")
@@ -343,10 +362,10 @@ private fun GroupsScreen(state: UiState, viewModel: AppViewModel) {
     Scaffold(
         topBar = {
             StudioTopBar(
-                title = "Group chat",
+                title = stringResource(R.string.groups_title),
                 actions = {
                     IconButton(onClick = { viewModel.refreshRooms() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
+                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.action_refresh))
                     }
                 },
             )
@@ -358,9 +377,9 @@ private fun GroupsScreen(state: UiState, viewModel: AppViewModel) {
             state.error?.let { ErrorNote(it) { viewModel.dismissError() } }
 
             if (!state.busy && state.rooms.isEmpty()) {
-                EmptyNote("No rooms yet")
+                EmptyNote(stringResource(R.string.groups_empty))
             } else {
-                SectionHeader("ROOMS", state.rooms.size)
+                SectionHeader(stringResource(R.string.groups_section), state.rooms.size)
                 LazyColumn {
                     items(state.rooms) { room ->
                         Column(
@@ -385,7 +404,7 @@ private fun GroupsScreen(state: UiState, viewModel: AppViewModel) {
                                 )
                             }
                             Text(
-                                "${room.agentCount} agents · ${room.memberCount} members",
+                                stringResource(R.string.groups_counts, room.agentCount, room.memberCount),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -405,7 +424,7 @@ private fun RoomScreen(state: UiState, viewModel: AppViewModel) {
     Scaffold(
         topBar = {
             StudioTopBar(
-                title = room?.name ?: "Room",
+                title = room?.name ?: stringResource(R.string.room_title),
                 subtitle = room?.agents?.takeIf { it.isNotEmpty() }?.joinToString(", "),
                 onBack = { viewModel.back() },
             )
@@ -416,7 +435,7 @@ private fun RoomScreen(state: UiState, viewModel: AppViewModel) {
             state.error?.let { ErrorNote(it) { viewModel.dismissError() } }
             val messages = room?.messages.orEmpty()
             if (!state.loadingHistory && messages.isEmpty()) {
-                EmptyNote("No messages in this room yet")
+                EmptyNote(stringResource(R.string.room_empty))
             }
             LazyColumn(
                 contentPadding = PaddingValues(12.dp),
@@ -461,7 +480,7 @@ private fun ConversationScreen(state: UiState, viewModel: AppViewModel) {
     Scaffold(
         topBar = {
             StudioTopBar(
-                title = state.openSession?.title ?: "New chat",
+                title = state.openSession?.title ?: stringResource(R.string.action_new_chat),
                 subtitle = listOfNotNull(profile.ifBlank { null }, state.openSession?.model)
                     .joinToString(" · ")
                     .ifBlank { null },
@@ -471,7 +490,7 @@ private fun ConversationScreen(state: UiState, viewModel: AppViewModel) {
                 onBack = { viewModel.back() },
                 actions = {
                     IconButton(onClick = { viewModel.startNewConversation() }) {
-                        Icon(Icons.Filled.Add, contentDescription = "New chat")
+                        Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.action_new_chat))
                     }
                 },
             )
@@ -488,7 +507,10 @@ private fun ConversationScreen(state: UiState, viewModel: AppViewModel) {
             if (state.lines.isEmpty() && !state.loadingHistory) {
                 Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Text(
-                        "Send a message to ${profile.ifBlank { "your agent" }}",
+                        stringResource(
+                            R.string.conversation_empty,
+                            profile.ifBlank { stringResource(R.string.conversation_your_agent) },
+                        ),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -516,7 +538,7 @@ private fun ConversationScreen(state: UiState, viewModel: AppViewModel) {
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     CircularProgressIndicator(modifier = Modifier.size(14.dp))
-                    Text("Thinking…", style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.conversation_thinking), style = MaterialTheme.typography.bodySmall)
                 }
             }
 
@@ -584,15 +606,15 @@ private fun ProfilesScreen(state: UiState, viewModel: AppViewModel) {
     Scaffold(
         topBar = {
             StudioTopBar(
-                title = "Profiles",
-                subtitle = state.account?.let { "Signed in as $it" },
+                title = stringResource(R.string.profiles_title),
+                subtitle = state.account?.let { stringResource(R.string.profiles_signed_in, it) },
                 onBack = { viewModel.back() },
                 actions = {
                     IconButton(onClick = { viewModel.refreshProfiles() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
+                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.action_refresh))
                     }
                     IconButton(onClick = { viewModel.signOut() }) {
-                        Icon(Icons.Filled.Logout, contentDescription = "Sign out")
+                        Icon(Icons.Filled.Logout, contentDescription = stringResource(R.string.action_sign_out))
                     }
                 },
             )
@@ -615,14 +637,14 @@ private fun ProfilesScreen(state: UiState, viewModel: AppViewModel) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(profile.name, style = MaterialTheme.typography.bodyLarge)
                             Text(
-                                profile.model ?: "no model configured",
+                                profile.model ?: stringResource(R.string.profiles_no_model),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                         if (profile.name == state.activeProfile) {
                             Text(
-                                "active",
+                                stringResource(R.string.profiles_active),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary,
                             )
@@ -702,7 +724,7 @@ private fun Composer(
             sheetState = rememberModalBottomSheetState(),
         ) {
             PickerSheet(
-                title = "Model",
+                title = stringResource(R.string.sheet_model),
                 loading = state.loadingModels,
                 rows = state.models.map { option ->
                     PickerRow(
@@ -722,12 +744,12 @@ private fun Composer(
             sheetState = rememberModalBottomSheetState(),
         ) {
             PickerSheet(
-                title = "Reasoning effort",
+                title = stringResource(R.string.sheet_reasoning),
                 loading = false,
                 rows = REASONING_LEVELS.map { (value, label) ->
                     PickerRow(
-                        label = label,
-                        detail = if (value.isBlank()) "Use the profile default" else null,
+                        label = stringResource(label),
+                        detail = if (value.isBlank()) stringResource(R.string.reasoning_use_profile) else null,
                         selected = value == state.reasoningEffort,
                     ) {
                         viewModel.setReasoningEffort(value)
@@ -750,10 +772,10 @@ private fun Composer(
                     AssistChip(
                         onClick = { viewModel.removeAttachment(file) },
                         label = { Text(file.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                        trailingIcon = { Icon(Icons.Filled.Close, contentDescription = "Remove") },
+                        trailingIcon = { Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.action_remove)) },
                     )
                 }
-                if (state.attaching) AssistChip(onClick = {}, label = { Text("Uploading…") })
+                if (state.attaching) AssistChip(onClick = {}, label = { Text(stringResource(R.string.composer_uploading)) })
             }
         }
 
@@ -765,13 +787,13 @@ private fun Composer(
             ) {
                 CircularProgressIndicator(modifier = Modifier.size(14.dp))
                 Text(
-                    if (state.recording) "Recording…" else "Transcribing…",
+                    stringResource(if (state.recording) R.string.composer_recording else R.string.composer_transcribing),
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.weight(1f),
                 )
                 if (state.recording) {
-                    TextButton(onClick = { viewModel.stopRecordingAndAttach() }) { Text("Send audio") }
-                    TextButton(onClick = { viewModel.cancelRecording() }) { Text("Cancel") }
+                    TextButton(onClick = { viewModel.stopRecordingAndAttach() }) { Text(stringResource(R.string.composer_send_audio)) }
+                    TextButton(onClick = { viewModel.cancelRecording() }) { Text(stringResource(R.string.action_cancel)) }
                 }
             }
         }
@@ -784,7 +806,7 @@ private fun Composer(
             OutlinedTextField(
                 value = draft,
                 onValueChange = onDraftChange,
-                placeholder = { Text("Type a message…") },
+                placeholder = { Text(stringResource(R.string.composer_hint)) },
                 modifier = Modifier.weight(1f),
                 maxLines = 5,
                 shape = RoundedCornerShape(20.dp),
@@ -810,20 +832,20 @@ private fun Composer(
             ) {
                 Icon(
                     Icons.Filled.Add,
-                    contentDescription = "More options",
+                    contentDescription = stringResource(R.string.composer_more),
                     tint = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.size(18.dp),
                 )
             }
             ToolbarChip(
                 icon = Icons.Filled.Psychology,
-                label = REASONING_LEVELS.firstOrNull { it.first == state.reasoningEffort }?.second ?: "Default",
+                label = reasoningLabel(state.reasoningEffort),
             ) {
                 sheet = ComposerSheet.Reasoning
             }
             ToolbarChip(
                 icon = Icons.Filled.WbSunny,
-                label = state.sessionModel ?: "Model",
+                label = state.sessionModel ?: stringResource(R.string.sheet_model),
             ) {
                 viewModel.loadModels()
                 sheet = ComposerSheet.Model
@@ -835,10 +857,15 @@ private fun Composer(
 private enum class ComposerSheet { Options, Model, Reasoning }
 
 private val REASONING_LEVELS = listOf(
-    "" to "Default",
-    "low" to "Low",
-    "medium" to "Medium",
-    "high" to "High",
+    "" to R.string.reasoning_default,
+    "low" to R.string.reasoning_low,
+    "medium" to R.string.reasoning_medium,
+    "high" to R.string.reasoning_high,
+)
+
+@Composable
+private fun reasoningLabel(effort: String): String = stringResource(
+    REASONING_LEVELS.firstOrNull { it.first == effort }?.second ?: R.string.reasoning_default,
 )
 
 @Composable
@@ -871,13 +898,13 @@ private fun SendOrRecordButton(
     ) {
         when {
             state.recording -> IconButton(onClick = { viewModel.stopRecordingAndTranscribe() }) {
-                Icon(Icons.Filled.Stop, contentDescription = "Stop and transcribe", tint = tint)
+                Icon(Icons.Filled.Stop, contentDescription = stringResource(R.string.composer_stop), tint = tint)
             }
             hasPayload -> IconButton(onClick = onSend, enabled = !state.sending) {
-                Icon(Icons.Filled.Send, contentDescription = "Send", tint = tint)
+                Icon(Icons.Filled.Send, contentDescription = stringResource(R.string.composer_send), tint = tint)
             }
             else -> IconButton(onClick = onRecord, enabled = !state.transcribing) {
-                Icon(Icons.Filled.Mic, contentDescription = "Record voice", tint = tint)
+                Icon(Icons.Filled.Mic, contentDescription = stringResource(R.string.composer_record), tint = tint)
             }
         }
     }
@@ -926,27 +953,27 @@ private fun OptionsSheet(
     onReasoning: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(bottom = 28.dp)) {
-        SheetTitle("Add")
+        SheetTitle(stringResource(R.string.sheet_add))
         Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
-            AttachOption(Icons.Filled.PhotoCamera, "Camera", onCamera)
-            AttachOption(Icons.Filled.Image, "Gallery", onGallery)
-            AttachOption(Icons.Filled.InsertDriveFile, "File", onDocument)
+            AttachOption(Icons.Filled.PhotoCamera, stringResource(R.string.sheet_camera), onCamera)
+            AttachOption(Icons.Filled.Image, stringResource(R.string.sheet_gallery), onGallery)
+            AttachOption(Icons.Filled.InsertDriveFile, stringResource(R.string.sheet_file), onDocument)
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-        SheetTitle("Conversation")
+        SheetTitle(stringResource(R.string.sheet_conversation))
         SheetRow(
             icon = Icons.Filled.WbSunny,
-            label = "Model",
-            detail = state.sessionModel ?: "profile default",
+            label = stringResource(R.string.sheet_model),
+            detail = state.sessionModel ?: stringResource(R.string.sheet_profile_default),
             onClick = onModel,
         )
         SheetRow(
             icon = Icons.Filled.Psychology,
-            label = "Reasoning effort",
-            detail = REASONING_LEVELS.firstOrNull { it.first == state.reasoningEffort }?.second ?: "Default",
+            label = stringResource(R.string.sheet_reasoning),
+            detail = reasoningLabel(state.reasoningEffort),
             onClick = onReasoning,
         )
     }
@@ -966,7 +993,7 @@ private fun PickerSheet(title: String, loading: Boolean, rows: List<PickerRow>) 
         if (loading) LoadingRow()
         if (!loading && rows.isEmpty()) {
             Text(
-                "Nothing available",
+                stringResource(R.string.sheet_empty),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
             )
@@ -990,7 +1017,7 @@ private fun PickerSheet(title: String, loading: Boolean, rows: List<PickerRow>) 
                     }
                 }
                 if (row.selected) {
-                    Icon(Icons.Filled.Check, contentDescription = "Selected")
+                    Icon(Icons.Filled.Check, contentDescription = stringResource(R.string.action_selected))
                 }
             }
         }
@@ -1089,12 +1116,65 @@ private fun readAndAttach(
     viewModel.attach(bytes, name, mime)
 }
 
+/**
+ * Language is reachable before sign-in on purpose: someone who cannot read the
+ * sign-in form cannot get to Settings to fix that.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LanguageSheet(state: UiState, viewModel: AppViewModel, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val activity = context as? Activity
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState()) {
+        PickerSheet(
+            title = stringResource(R.string.settings_language),
+            loading = false,
+            rows = APP_LANGUAGES.map { option ->
+                PickerRow(
+                    label = AppLocale.labelFor(context, option),
+                    detail = null,
+                    selected = option.tag == state.language,
+                ) {
+                    onDismiss()
+                    viewModel.setLanguage(option.tag)
+                    // Resources are resolved when the activity is built, so rebuild it.
+                    activity?.recreate()
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun LanguageAction(state: UiState, viewModel: AppViewModel) {
+    var open by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    if (open) LanguageSheet(state, viewModel) { open = false }
+
+    TextButton(onClick = { open = true }) {
+        Icon(
+            Icons.Filled.Language,
+            contentDescription = stringResource(R.string.settings_language),
+            modifier = Modifier.size(17.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            AppLocale.currentEndonym(context, state.language),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
     var modelSheet by remember { mutableStateOf(false) }
+    var languageSheet by remember { mutableStateOf(false) }
     val profile = state.activeProfile.ifBlank { "default" }
     val context = LocalContext.current
+    val language = APP_LANGUAGES.firstOrNull { it.tag == state.language } ?: APP_LANGUAGES.first()
 
     val pickLogo = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
@@ -1110,7 +1190,7 @@ private fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
             sheetState = rememberModalBottomSheetState(),
         ) {
             PickerSheet(
-                title = "Default model for $profile",
+                title = stringResource(R.string.settings_default_model_title, profile),
                 loading = state.loadingModels,
                 rows = state.models.map { option ->
                     PickerRow(
@@ -1126,11 +1206,13 @@ private fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
         }
     }
 
+    if (languageSheet) LanguageSheet(state, viewModel) { languageSheet = false }
+
     Scaffold(
         topBar = {
             StudioTopBar(
-                title = "Settings",
-                subtitle = state.account?.let { "Signed in as $it" },
+                title = stringResource(R.string.settings_title),
+                subtitle = state.account?.let { stringResource(R.string.profiles_signed_in, it) },
                 onBack = { viewModel.back() },
             )
         },
@@ -1145,29 +1227,29 @@ private fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
             state.error?.let { ErrorNote(it) { viewModel.dismissError() } }
             state.notice?.let { NoticeNote(it) { viewModel.dismissNotice() } }
 
-            SettingsSection("Server")
+            SettingsSection(stringResource(R.string.settings_section_server))
             SettingsRow(
                 icon = Icons.Filled.Dns,
-                label = "Address",
-                value = state.baseUrl.ifBlank { "not set" },
+                label = stringResource(R.string.settings_address),
+                value = state.baseUrl.ifBlank { stringResource(R.string.settings_address_missing) },
             )
             SettingsRow(
                 icon = Icons.Filled.Person,
-                label = "Account",
-                value = state.account ?: "unknown",
+                label = stringResource(R.string.settings_account),
+                value = state.account ?: stringResource(R.string.settings_account_unknown),
             )
 
-            SettingsSection("Active profile")
+            SettingsSection(stringResource(R.string.settings_section_profile))
             SettingsRow(
                 icon = Icons.Filled.Person,
-                label = "Profile",
+                label = stringResource(R.string.settings_profile),
                 value = profile,
                 onClick = { viewModel.show(Screen.Profiles) },
             )
             SettingsRow(
                 icon = Icons.Filled.WbSunny,
-                label = "Default model",
-                value = state.defaultModel ?: "server default",
+                label = stringResource(R.string.settings_default_model),
+                value = state.defaultModel ?: stringResource(R.string.settings_default_model_server),
                 onClick = {
                     viewModel.loadModels()
                     modelSheet = true
@@ -1175,63 +1257,73 @@ private fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
             )
             SettingsRow(
                 icon = Icons.Filled.RestartAlt,
-                label = "Restart gateway",
-                value = "Applies channel and model changes",
+                label = stringResource(R.string.settings_restart_gateway),
+                value = stringResource(R.string.settings_restart_gateway_note),
                 onClick = { viewModel.restartGateway() },
             )
 
-            SettingsSection("Appearance")
+            SettingsSection(stringResource(R.string.settings_section_appearance))
             LogoRow(
-                value = when {
-                    AppLogo.isCustom -> "A picture from this device"
-                    AppLogo.image != null -> "The logo your Studio server serves"
-                    else -> "Not loaded yet — tap to choose one"
-                },
+                value = stringResource(
+                    when {
+                        AppLogo.isCustom -> R.string.settings_logo_custom
+                        AppLogo.image != null -> R.string.settings_logo_server
+                        else -> R.string.settings_logo_missing
+                    },
+                ),
                 onClick = { pickLogo.launch("image/*") },
             )
             if (AppLogo.isCustom) {
                 SettingsRow(
                     icon = Icons.Filled.Refresh,
-                    label = "Use the Studio logo",
-                    value = "Drops the picture stored on this device",
+                    label = stringResource(R.string.settings_logo_reset),
+                    value = stringResource(R.string.settings_logo_reset_note),
                     onClick = { viewModel.resetAppLogo() },
                 )
             }
             Text(
-                "The mark on the launch screen and in the chat header. It is fetched from your own " +
-                    "server, so replacing logo.png there changes it here too.",
+                stringResource(R.string.settings_logo_note),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
             )
 
-            SettingsSection("This device")
+            SettingsRow(
+                icon = Icons.Filled.Language,
+                label = stringResource(R.string.settings_language),
+                value = AppLocale.labelFor(context, language),
+                onClick = { languageSheet = true },
+            )
+
+            SettingsSection(stringResource(R.string.settings_section_device))
             SettingsRow(
                 icon = Icons.Filled.Psychology,
-                label = "Reasoning effort",
-                value = REASONING_LEVELS.firstOrNull { it.first == state.reasoningEffort }?.second ?: "Default",
-                onClick = { viewModel.show(Screen.Settings) },
+                label = stringResource(R.string.settings_reasoning),
+                value = reasoningLabel(state.reasoningEffort),
             )
             Text(
-                "Reasoning effort is chosen per conversation from the + menu in the composer.",
+                stringResource(R.string.settings_reasoning_note),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
             )
 
-            SettingsSection("Account")
+            SettingsSection(stringResource(R.string.settings_section_account))
             SettingsRow(
                 icon = Icons.Filled.Logout,
-                label = "Sign out",
-                value = "Removes the stored token from this device",
+                label = stringResource(R.string.action_sign_out),
+                value = stringResource(R.string.settings_sign_out_note),
                 onClick = { viewModel.signOut() },
             )
 
-            SettingsSection("About")
-            SettingsRow(icon = Icons.Filled.Chat, label = "Version", value = BuildConfig.VERSION_NAME)
+            SettingsSection(stringResource(R.string.settings_section_about))
+            SettingsRow(
+                icon = Icons.Filled.Chat,
+                label = stringResource(R.string.settings_version),
+                value = BuildConfig.VERSION_NAME,
+            )
             Text(
-                "Unofficial community client for Hermes Studio. Generated profile pictures: " +
-                    "avatars by Multiavatar.com.",
+                stringResource(R.string.settings_about_note),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
@@ -1296,7 +1388,7 @@ private fun LogoRow(value: String, onClick: () -> Unit) {
     ) {
         AppMark(size = 34.dp, corner = 10.dp)
         Column(modifier = Modifier.weight(1f)) {
-            Text("App logo", style = MaterialTheme.typography.bodyLarge)
+            Text(stringResource(R.string.settings_logo), style = MaterialTheme.typography.bodyLarge)
             Text(
                 value,
                 style = MaterialTheme.typography.labelSmall,
@@ -1318,7 +1410,7 @@ private fun NoticeNote(message: String, onDismiss: () -> Unit) {
     ) {
         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(message, modifier = Modifier.weight(1f))
-            TextButton(onClick = onDismiss) { Text("OK") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_ok)) }
         }
     }
 }
@@ -1358,7 +1450,7 @@ private fun StudioTopBar(
         navigationIcon = {
             if (onBack != null) {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                    Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                 }
             }
         },
@@ -1375,14 +1467,14 @@ private fun StudioTabs(state: UiState, viewModel: AppViewModel) {
         NavigationBarItem(
             selected = state.tab == Tab.Chats,
             onClick = { viewModel.showTab(Tab.Chats) },
-            icon = { Icon(Icons.Filled.Chat, contentDescription = "Chats") },
-            label = { Text("Chats") },
+            icon = { Icon(Icons.Filled.Chat, contentDescription = null) },
+            label = { Text(stringResource(R.string.chats_tab)) },
         )
         NavigationBarItem(
             selected = state.tab == Tab.Groups,
             onClick = { viewModel.showTab(Tab.Groups) },
-            icon = { Icon(Icons.Filled.Group, contentDescription = "Groups") },
-            label = { Text("Groups") },
+            icon = { Icon(Icons.Filled.Group, contentDescription = null) },
+            label = { Text(stringResource(R.string.groups_tab)) },
         )
     }
 }
@@ -1437,7 +1529,7 @@ private fun ErrorNote(message: String, onDismiss: () -> Unit) {
                 modifier = Modifier.weight(1f),
                 color = MaterialTheme.colorScheme.onErrorContainer,
             )
-            TextButton(onClick = onDismiss) { Text("Dismiss") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_dismiss)) }
         }
     }
 }

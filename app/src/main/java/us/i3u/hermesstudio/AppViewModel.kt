@@ -52,6 +52,8 @@ data class UiState(
     val loadingModels: Boolean = false,
     /** Blank means the profile default, matching Studio's "Default" chip. */
     val reasoningEffort: String = "",
+    /** BCP-47 tag chosen in Settings; blank follows the system. */
+    val language: String = "",
     val sessionModel: String? = null,
     val defaultModel: String? = null,
     val savingSetting: Boolean = false,
@@ -61,6 +63,9 @@ data class UiState(
 class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val store = Store(app)
+
+    /** Resolves strings in the language chosen in Settings, not the phone's. */
+    private val localized = AppLocale.wrap(app)
     private val api = HermesApi(store.baseUrl, store.token)
     private val recorder = Recorder(app)
 
@@ -75,6 +80,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             },
             baseUrl = store.baseUrl,
             reasoningEffort = store.reasoningEffort,
+            language = store.language,
         ),
     )
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -113,7 +119,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _state.update {
                 it.copy(
                     screen = Screen.Login,
-                    error = "Session expired: " + failure.readableMessage(),
+                    error = str(R.string.error_session_expired, failure.readableMessage(localized)),
                 )
             }
         },
@@ -122,11 +128,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun login(baseUrl: String, username: String, password: String) {
         val normalized = normalizeUrl(baseUrl)
         if (normalized == null) {
-            _state.update { it.copy(error = "Enter a server address such as https://hermes.example.com") }
+            _state.update { it.copy(error = str(R.string.error_server_address)) }
             return
         }
         if (username.isBlank() || password.isBlank()) {
-            _state.update { it.copy(error = "Username and password are required") }
+            _state.update { it.copy(error = str(R.string.error_credentials_required)) }
             return
         }
 
@@ -246,7 +252,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 .onFailure { failure ->
                     _state.update {
-                        it.copy(loadingHistory = false, error = failure.readableMessage())
+                        it.copy(loadingHistory = false, error = failure.readableMessage(localized))
                     }
                 }
         }
@@ -305,7 +311,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }.onFailure { failure ->
                 _state.update {
                     it.copy(
-                        lines = it.lines + ChatLine(failure.readableMessage(), fromUser = false, isError = true),
+                        lines = it.lines + ChatLine(failure.readableMessage(localized), fromUser = false, isError = true),
                         sending = false,
                     )
                 }
@@ -325,7 +331,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     _state.update { it.copy(attaching = false, attachments = it.attachments + upload) }
                 }
                 .onFailure { failure ->
-                    _state.update { it.copy(attaching = false, error = failure.readableMessage()) }
+                    _state.update { it.copy(attaching = false, error = failure.readableMessage(localized)) }
                 }
         }
     }
@@ -341,7 +347,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (recorder.start()) {
             _state.update { it.copy(recording = true, error = null) }
         } else {
-            _state.update { it.copy(error = "Could not start the microphone") }
+            _state.update { it.copy(error = str(R.string.error_microphone)) }
         }
     }
 
@@ -356,7 +362,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val bytes = recorder.stop()
         _state.update { it.copy(recording = false) }
         if (bytes == null) {
-            _state.update { it.copy(error = "That recording was too short") }
+            _state.update { it.copy(error = str(R.string.error_recording_short)) }
             return
         }
 
@@ -370,7 +376,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }.onSuccess { text ->
                 _state.update { it.copy(transcribing = false, transcript = text) }
             }.onFailure { failure ->
-                _state.update { it.copy(transcribing = false, error = failure.readableMessage()) }
+                _state.update { it.copy(transcribing = false, error = failure.readableMessage(localized)) }
             }
         }
     }
@@ -381,7 +387,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val bytes = recorder.stop()
         _state.update { it.copy(recording = false) }
         if (bytes == null) {
-            _state.update { it.copy(error = "That recording was too short") }
+            _state.update { it.copy(error = str(R.string.error_recording_short)) }
             return
         }
         attach(bytes, "voice-${System.currentTimeMillis()}.m4a", "audio/mp4")
@@ -399,7 +405,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             runCatching { withContext(Dispatchers.IO) { api.availableModels(profile) } }
                 .onSuccess { models -> _state.update { it.copy(models = models, loadingModels = false) } }
                 .onFailure { failure ->
-                    _state.update { it.copy(loadingModels = false, error = failure.readableMessage()) }
+                    _state.update { it.copy(loadingModels = false, error = failure.readableMessage(localized)) }
                 }
         }
     }
@@ -415,7 +421,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             runCatching {
                 withContext(Dispatchers.IO) { api.setSessionModel(sessionId, option.id, option.provider) }
             }.onFailure { failure ->
-                _state.update { it.copy(error = failure.readableMessage()) }
+                _state.update { it.copy(error = failure.readableMessage(localized)) }
             }
         }
     }
@@ -437,7 +443,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 _state.update { it.copy(openRoom = detail, loadingHistory = false) }
             },
             onFailure = { failure ->
-                _state.update { it.copy(loadingHistory = false, error = failure.readableMessage()) }
+                _state.update { it.copy(loadingHistory = false, error = failure.readableMessage(localized)) }
             },
         )
     }
@@ -466,11 +472,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     it.copy(
                         savingSetting = false,
                         defaultModel = option.id,
-                        notice = "Default model for $profile is now ${option.id}",
+                        notice = str(R.string.notice_default_model, profile, option.id),
                     )
                 }
             }.onFailure { failure ->
-                _state.update { it.copy(savingSetting = false, error = failure.readableMessage()) }
+                _state.update { it.copy(savingSetting = false, error = failure.readableMessage(localized)) }
             }
         }
     }
@@ -481,10 +487,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             runCatching { withContext(Dispatchers.IO) { api.restartGateway(profile) } }
                 .onSuccess {
-                    _state.update { it.copy(savingSetting = false, notice = "Gateway restarting for $profile") }
+                    _state.update {
+                        it.copy(savingSetting = false, notice = str(R.string.notice_gateway_restarting, profile))
+                    }
                 }
                 .onFailure { failure ->
-                    _state.update { it.copy(savingSetting = false, error = failure.readableMessage()) }
+                    _state.update { it.copy(savingSetting = false, error = failure.readableMessage(localized)) }
                 }
         }
     }
@@ -494,8 +502,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val applied = AppLogo.setCustom(getApplication<Application>(), bytes)
             _state.update {
-                if (applied) it.copy(notice = "App logo updated", error = null)
-                else it.copy(error = "That image could not be read")
+                if (applied) it.copy(notice = str(R.string.notice_logo_updated), error = null)
+                else it.copy(error = str(R.string.error_image_unreadable))
             }
         }
     }
@@ -507,9 +515,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             runCatching { AppLogo.syncFromServer(getApplication<Application>(), api, force = true) }
             _state.update {
                 if (AppLogo.image != null) {
-                    it.copy(notice = "Using the logo from your Studio server", error = null)
+                    it.copy(notice = str(R.string.notice_logo_from_server), error = null)
                 } else {
-                    it.copy(error = "That server did not return a logo")
+                    it.copy(error = str(R.string.error_no_server_logo))
                 }
             }
         }
@@ -535,9 +543,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 screen = Screen.Login,
                 baseUrl = store.baseUrl,
                 reasoningEffort = store.reasoningEffort,
+                language = store.language,
             )
         }
     }
+
+    /** Chooses the language for every screen; the activity restarts to apply it. */
+    fun setLanguage(tag: String) {
+        store.language = tag
+        _state.update { it.copy(language = tag) }
+    }
+
+    private fun str(id: Int, vararg args: Any): String = localized.getString(id, *args)
 
     private fun currentProfile(): String =
         _state.value.openSession?.profile?.ifBlank { null }
@@ -568,7 +585,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 .onFailure { failure ->
                     _state.update { state -> state.copy(busy = false) }
                     if (onFailure != null) onFailure(failure)
-                    else _state.update { state -> state.copy(error = failure.readableMessage()) }
+                    else _state.update { state -> state.copy(error = failure.readableMessage(localized)) }
                 }
         }
     }
@@ -585,10 +602,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 }
 
-private fun Throwable.readableMessage(): String = when (this) {
-    is HermesException -> message ?: "Request failed"
-    is java.net.UnknownHostException -> "Cannot reach that server address"
-    is java.net.SocketTimeoutException -> "The server took too long to answer"
-    is javax.net.ssl.SSLException -> "TLS handshake failed for that address"
+private fun Throwable.readableMessage(context: android.content.Context): String = when (this) {
+    // A HermesException already carries what the server said, in its own words.
+    is HermesException -> message ?: context.getString(R.string.error_request_failed)
+    is java.net.UnknownHostException -> context.getString(R.string.error_unreachable)
+    is java.net.SocketTimeoutException -> context.getString(R.string.error_timeout)
+    is javax.net.ssl.SSLException -> context.getString(R.string.error_tls)
     else -> message ?: this::class.java.simpleName
 }

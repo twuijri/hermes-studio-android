@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  العربية. نفس مفاتيح res/values/strings.xml بالضبط — اختبار
+  TranslationsTest يرفض أي مفتاح ناقص أو زائد.
+-->
+<resources>
+    <string name="app_name">Hermes Studio</string>
+
+    <!-- إجراءات وتسميات مشتركة -->
+    <string name="action_back">رجوع</string>
+    <string name="action_refresh">تحديث</string>
+    <string name="action_dismiss">تجاهل</string>
+    <string name="action_cancel">إلغاء</string>
+    <string name="action_ok">حسنًا</string>
+    <string name="action_skip">تخطٍّ</string>
+    <string name="action_next">التالي</string>
+    <string name="action_new_chat">محادثة جديدة</string>
+    <string name="action_settings">الإعدادات</string>
+    <string name="action_profiles">البروفايلات</string>
+    <string name="action_sign_out">تسجيل الخروج</string>
+    <string name="action_remove">إزالة</string>
+    <string name="action_selected">محدد</string>
+
+    <!-- أول تشغيل: شاشة الإقلاع وجولة التعريف -->
+    <string name="intro_restoring">جارٍ استعادة جلستك…</string>
+    <string name="intro_chat_title">وكلاؤك في جوالك</string>
+    <string name="intro_chat_body">تطبيق أصلي لهرمز استديو. اقرأ محادثاتك، وأكمل الحديث مع وكلائك، وأرفق الصور والملفات، وأملِ رسائلك بصوتك.</string>
+    <string name="intro_server_title">السيرفر منك أنت</string>
+    <string name="intro_server_body">هذا التطبيق واجهة فقط. يحتاج سيرفر هرمز استديو تشغّله أنت وتتحكم فيه — ولا توجد خدمة مستضافة خلفه.</string>
+    <string name="intro_server_step_install">ثبّت هرمز استديو على جهاز أو خادم افتراضي تملكه</string>
+    <string name="intro_server_step_https">اجعله متاحًا عبر HTTPS، مثل https://hermes.example.com</string>
+    <string name="intro_server_step_return">ارجع هنا بذلك العنوان وبيانات دخولك</string>
+    <string name="intro_privacy_title">لا شيء يغادر سيرفرك</string>
+    <string name="intro_privacy_body">عنوانك ورمزك ورسائلك تذهب إلى السيرفر الذي تُدخله وحده. الرمز يُحفظ مشفرًا على هذا الجهاز، والتطبيق خالٍ من أي تتبع.</string>
+    <string name="intro_cta">اربط سيرفري</string>
+
+    <!-- تسجيل الدخول -->
+    <string name="login_title">اتصل بسيرفرك</string>
+    <string name="login_server_label">عنوان السيرفر</string>
+    <string name="login_server_hint">https://hermes.example.com</string>
+    <string name="login_username">اسم المستخدم</string>
+    <string name="login_password">كلمة المرور</string>
+    <string name="login_submit">تسجيل الدخول</string>
+    <string name="login_submitting">جارٍ الاتصال…</string>
+    <string name="login_note">بيانات الدخول تُحفظ مشفرة على هذا الجهاز، ولا تُرسل إلا إلى العنوان أعلاه.</string>
+
+    <!-- قائمة المحادثات -->
+    <string name="chats_title">المحادثات</string>
+    <string name="chats_tab">المحادثات</string>
+    <string name="chats_all_profiles">كل البروفايلات</string>
+    <string name="chats_empty">لا توجد محادثات بعد</string>
+    <string name="chats_section">المحادثات</string>
+
+    <!-- المحادثة الجماعية -->
+    <string name="groups_title">المحادثة الجماعية</string>
+    <string name="groups_tab">القروبات</string>
+    <string name="groups_empty">لا توجد غرف بعد</string>
+    <string name="groups_section">الغرف</string>
+    <string name="groups_counts">%1$d وكلاء · %2$d أعضاء</string>
+    <string name="room_title">غرفة</string>
+    <string name="room_empty">لا توجد رسائل في هذه الغرفة بعد</string>
+
+    <!-- المحادثة -->
+    <string name="conversation_empty">أرسل رسالة إلى %1$s</string>
+    <string name="conversation_your_agent">وكيلك</string>
+    <string name="conversation_thinking">يفكر…</string>
+
+    <!-- صندوق الكتابة -->
+    <string name="composer_hint">اكتب رسالة…</string>
+    <string name="composer_recording">جارٍ التسجيل…</string>
+    <string name="composer_transcribing">جارٍ التفريغ…</string>
+    <string name="composer_send_audio">أرسل الصوت</string>
+    <string name="composer_uploading">جارٍ الرفع…</string>
+    <string name="composer_send">إرسال</string>
+    <string name="composer_record">تسجيل صوتي</string>
+    <string name="composer_stop">أوقف وفرّغ النص</string>
+    <string name="composer_more">خيارات إضافية</string>
+
+    <!-- قائمة زر + -->
+    <string name="sheet_add">إضافة</string>
+    <string name="sheet_camera">الكاميرا</string>
+    <string name="sheet_gallery">المعرض</string>
+    <string name="sheet_file">ملف</string>
+    <string name="sheet_conversation">المحادثة</string>
+    <string name="sheet_model">الموديل</string>
+    <string name="sheet_reasoning">قوة التفكير</string>
+    <string name="sheet_profile_default">افتراضي البروفايل</string>
+    <string name="sheet_empty">لا يوجد شيء متاح</string>
+    <string name="reasoning_default">افتراضي</string>
+    <string name="reasoning_low">منخفض</string>
+    <string name="reasoning_medium">متوسط</string>
+    <string name="reasoning_high">مرتفع</string>
+    <string name="reasoning_use_profile">استخدم افتراضي البروفايل</string>
+
+    <!-- البروفايلات -->
+    <string name="profiles_title">البروفايلات</string>
+    <string name="profiles_signed_in">مسجّل الدخول باسم %1$s</string>
+    <string name="profiles_no_model">لا يوجد موديل معدّ</string>
+    <string name="profiles_active">نشط</string>
+
+    <!-- الإعدادات -->
+    <string name="settings_title">الإعدادات</string>
+    <string name="settings_section_server">السيرفر</string>
+    <string name="settings_section_profile">البروفايل النشط</string>
+    <string name="settings_section_appearance">المظهر</string>
+    <string name="settings_section_device">هذا الجهاز</string>
+    <string name="settings_section_account">الحساب</string>
+    <string name="settings_section_about">عن التطبيق</string>
+    <string name="settings_address">العنوان</string>
+    <string name="settings_address_missing">غير محدد</string>
+    <string name="settings_account">الحساب</string>
+    <string name="settings_account_unknown">غير معروف</string>
+    <string name="settings_profile">البروفايل</string>
+    <string name="settings_default_model">الموديل الافتراضي</string>
+    <string name="settings_default_model_server">افتراضي السيرفر</string>
+    <string name="settings_default_model_title">الموديل الافتراضي لـ%1$s</string>
+    <string name="settings_restart_gateway">إعادة تشغيل البوابة</string>
+    <string name="settings_restart_gateway_note">يطبّق تغييرات القنوات والموديلات</string>
+    <string name="settings_logo">شعار التطبيق</string>
+    <string name="settings_logo_custom">صورة من هذا الجهاز</string>
+    <string name="settings_logo_server">الشعار الذي يقدّمه سيرفر الاستديو</string>
+    <string name="settings_logo_missing">لم يُحمَّل بعد — اضغط لاختيار صورة</string>
+    <string name="settings_logo_reset">استخدم شعار الاستديو</string>
+    <string name="settings_logo_reset_note">يحذف الصورة المحفوظة على هذا الجهاز</string>
+    <string name="settings_logo_note">الشعار الظاهر في شاشة الإقلاع وترويسة المحادثات. يُجلب من سيرفرك أنت، فتغيير logo.png هناك يغيّره هنا أيضًا.</string>
+    <string name="settings_language">اللغة</string>
+    <string name="settings_language_system">تبعًا للنظام</string>
+    <string name="settings_reasoning">قوة التفكير</string>
+    <string name="settings_reasoning_note">تُختار قوة التفكير لكل محادثة من زر + في صندوق الكتابة.</string>
+    <string name="settings_sign_out_note">يحذف الرمز المحفوظ من هذا الجهاز</string>
+    <string name="settings_version">الإصدار</string>
+    <string name="settings_about_note">تطبيق مجتمعي غير رسمي لهرمز استديو. الصور الرمزية المولّدة من Multiavatar.com.</string>
+
+    <!-- رسائل يصدرها التطبيق نفسه -->
+    <string name="error_server_address">أدخل عنوان سيرفر مثل https://hermes.example.com</string>
+    <string name="error_credentials_required">اسم المستخدم وكلمة المرور مطلوبان</string>
+    <string name="error_session_expired">انتهت الجلسة: %1$s</string>
+    <string name="error_microphone">تعذّر تشغيل المايكروفون</string>
+    <string name="error_recording_short">التسجيل قصير جدًا</string>
+    <string name="error_image_unreadable">تعذّرت قراءة هذه الصورة</string>
+    <string name="error_no_server_logo">هذا السيرفر لم يُرجع شعارًا</string>
+    <string name="error_request_failed">فشل الطلب</string>
+    <string name="error_unreachable">تعذّر الوصول إلى عنوان السيرفر</string>
+    <string name="error_timeout">تأخر السيرفر في الرد</string>
+    <string name="error_tls">فشل تبادل شهادات TLS مع هذا العنوان</string>
+    <string name="notice_logo_updated">تم تحديث شعار التطبيق</string>
+    <string name="notice_logo_from_server">يُستخدم الآن شعار سيرفر الاستديو</string>
+    <string name="notice_default_model">الموديل الافتراضي لـ%1$s صار %2$s</string>
+    <string name="notice_gateway_restarting">جارٍ إعادة تشغيل البوابة لـ%1$s</string>
+</resources>

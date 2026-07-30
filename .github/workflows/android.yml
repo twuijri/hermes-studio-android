@@ -45,6 +45,11 @@ jobs:
             -destalias "$KEY_ALIAS"
           echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/signing.jks" >> "$GITHUB_ENV"
 
+      # Catches a translation that dropped a key or mangled a placeholder before
+      # anything is packaged. See docs/adding-a-language.md.
+      - name: Check translations
+        run: gradle --no-daemon testDebugUnitTest
+
       - name: Build APK
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
