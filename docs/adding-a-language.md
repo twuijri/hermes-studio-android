@@ -59,10 +59,20 @@ gradle test
 
 ## Right-to-left languages
 
-Nothing to do. Every layout uses `start`/`end` rather than `left`/`right`, and the
-manifest declares `supportsRtl`, so Android mirrors the whole interface — lists,
-the composer, the back arrow — as soon as an RTL locale is selected. Arabic is the
-worked example; Hebrew, Persian and Urdu behave the same way.
+Nothing to do as a translator. Arabic is the worked example; Hebrew, Persian and
+Urdu behave the same way.
+
+If you are writing UI code, two things Android cannot mirror for you, both checked
+by `RtlTest`:
+
+- **Icons that mean a direction** must come from `Icons.AutoMirrored.Filled.*`.
+  `Icons.Filled.ArrowBack` keeps pointing left in Arabic, where back is to the right.
+- **Position must be written in `start`/`end` terms**, never `left`/`right`. Padding,
+  alignment, and text alignment all have start/end forms.
+
+Everything else — the order of a row, which side a list item's timestamp sits on,
+the drawer, the sheet — Android mirrors on its own because the manifest declares
+`supportsRtl`.
 
 ## Style notes
 

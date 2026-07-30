@@ -19,7 +19,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Button
@@ -78,7 +78,7 @@ private data class IntroPage(
 
 private val INTRO_PAGES = listOf(
     IntroPage(
-        icon = Icons.Filled.Chat,
+        icon = Icons.AutoMirrored.Filled.Chat,
         title = R.string.intro_chat_title,
         body = R.string.intro_chat_body,
     ),

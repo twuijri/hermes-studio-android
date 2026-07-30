@@ -13,9 +13,10 @@ directly and renders a native, phone-shaped interface instead of wrapping a web 
   a room, settings, the groups tab — and only closes the app from the chat list
 - **Confirmation before anything you cannot undo**: signing out and restarting a
   profile's gateway both ask first, naming the profile that will stop answering
-- **Arabic, with the interface mirrored** — every screen is translated, and Android
-  flips the whole layout for a right-to-left language. Pick a language in Settings,
-  or before you even sign in, from the globe on the first screen
+- **Arabic, with the interface mirrored** — every screen is translated, the layout
+  flips for a right-to-left language, and the icons that mean a direction (back,
+  send) flip with it. Pick a language in Settings, or before you even sign in, from
+  the globe on the first screen
 - **A translation structure built for more languages**: one file of strings, one line
   to offer it, and a test that fails the build on a missing key or a broken
   placeholder — see [docs/adding-a-language.md](docs/adding-a-language.md)

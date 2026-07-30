@@ -36,24 +36,24 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
+import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoCamera
-import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Group
-import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Dns
@@ -636,7 +636,7 @@ private fun ProfilesScreen(state: UiState, viewModel: AppViewModel) {
                         Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.action_refresh))
                     }
                     IconButton(onClick = { confirmSignOut = true }) {
-                        Icon(Icons.Filled.Logout, contentDescription = stringResource(R.string.action_sign_out))
+                        Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = stringResource(R.string.action_sign_out))
                     }
                 },
             )
@@ -923,7 +923,7 @@ private fun SendOrRecordButton(
                 Icon(Icons.Filled.Stop, contentDescription = stringResource(R.string.composer_stop), tint = tint)
             }
             hasPayload -> IconButton(onClick = onSend, enabled = !state.sending) {
-                Icon(Icons.Filled.Send, contentDescription = stringResource(R.string.composer_send), tint = tint)
+                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = stringResource(R.string.composer_send), tint = tint)
             }
             else -> IconButton(onClick = onRecord, enabled = !state.transcribing) {
                 Icon(Icons.Filled.Mic, contentDescription = stringResource(R.string.composer_record), tint = tint)
@@ -982,7 +982,7 @@ private fun OptionsSheet(
         ) {
             AttachOption(Icons.Filled.PhotoCamera, stringResource(R.string.sheet_camera), onCamera)
             AttachOption(Icons.Filled.Image, stringResource(R.string.sheet_gallery), onGallery)
-            AttachOption(Icons.Filled.InsertDriveFile, stringResource(R.string.sheet_file), onDocument)
+            AttachOption(Icons.AutoMirrored.Filled.InsertDriveFile, stringResource(R.string.sheet_file), onDocument)
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outline)
         SheetTitle(stringResource(R.string.sheet_conversation))
@@ -1380,7 +1380,7 @@ private fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
 
             SettingsSection(stringResource(R.string.settings_section_account))
             SettingsRow(
-                icon = Icons.Filled.Logout,
+                icon = Icons.AutoMirrored.Filled.Logout,
                 label = stringResource(R.string.action_sign_out),
                 value = stringResource(R.string.settings_sign_out_note),
                 onClick = { confirm = ConfirmAction.SignOut },
@@ -1388,7 +1388,7 @@ private fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
 
             SettingsSection(stringResource(R.string.settings_section_about))
             SettingsRow(
-                icon = Icons.Filled.Chat,
+                icon = Icons.AutoMirrored.Filled.Chat,
                 label = stringResource(R.string.settings_version),
                 value = BuildConfig.VERSION_NAME,
             )
@@ -1520,7 +1520,7 @@ private fun StudioTopBar(
         navigationIcon = {
             if (onBack != null) {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                 }
             }
         },
@@ -1537,7 +1537,7 @@ private fun StudioTabs(state: UiState, viewModel: AppViewModel) {
         NavigationBarItem(
             selected = state.tab == Tab.Chats,
             onClick = { viewModel.showTab(Tab.Chats) },
-            icon = { Icon(Icons.Filled.Chat, contentDescription = null) },
+            icon = { Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = null) },
             label = { Text(stringResource(R.string.chats_tab)) },
         )
         NavigationBarItem(
