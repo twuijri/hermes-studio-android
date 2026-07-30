@@ -3,6 +3,14 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// A stable signing key means every build can install over the previous one.
+// Without it Gradle falls back to a debug key that CI regenerates per run, which
+// makes Android reject the update with "App not installed".
+val keystorePath: String? = System.getenv("ANDROID_KEYSTORE_PATH")
+val keystorePassword: String? = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+val keystoreAlias: String? = System.getenv("ANDROID_KEY_ALIAS")
+val hasSigningKey = !keystorePath.isNullOrBlank() && file(keystorePath).exists()
+
 android {
     namespace = "us.i3u.hermesstudio"
     compileSdk = 34
@@ -11,16 +19,33 @@ android {
         applicationId = "us.i3u.hermesstudio"
         minSdk = 26
         targetSdk = 34
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 4
+        versionName = "0.3.1"
+    }
+
+    signingConfigs {
+        if (hasSigningKey) {
+            create("shared") {
+                storeFile = file(keystorePath!!)
+                storePassword = keystorePassword
+                keyAlias = keystoreAlias
+                keyPassword = keystorePassword
+            }
+        }
     }
 
     buildTypes {
         debug {
             isMinifyEnabled = false
+            if (hasSigningKey) signingConfig = signingConfigs.getByName("shared")
         }
         release {
             isMinifyEnabled = false
+            signingConfig = if (hasSigningKey) {
+                signingConfigs.getByName("shared")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 

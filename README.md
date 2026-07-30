@@ -27,11 +27,19 @@ directly and renders a native, phone-shaped interface instead of wrapping a web 
 
 ## Install
 
-Grab `hermes-studio-android-debug.apk` from the
-[latest debug release](../../releases/tag/latest-debug), open it on your phone and
-allow installation from unknown sources when prompted.
+Grab `hermes-studio-android.apk` from the
+[latest build](../../releases/tag/latest-debug) and open it on your phone.
 
-Every push to `main` rebuilds that release, so the link always points at the newest build.
+Android shows **"Play Protect hasn't seen an app from this developer before"** — that
+appears for every app installed outside the Play Store. Choose **Install anyway**.
+
+Every push to `main` rebuilds that release, so the link always points at the newest
+build, and each build is signed with the same project key so it installs straight over
+the previous version.
+
+> Installed a build from before 2026-07-30? Uninstall the old app once, then install
+> this one. Those builds were signed with a throwaway key that CI regenerated on every
+> run, which is why Android refused to update them in place.
 
 ## How it talks to your server
 

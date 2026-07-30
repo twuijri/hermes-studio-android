@@ -12,6 +12,8 @@ permissions:
 jobs:
   apk:
     runs-on: ubuntu-latest
+    env:
+      KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
     steps:
       - uses: actions/checkout@v4
 
@@ -26,29 +28,54 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Build debug APK
-        run: gradle --no-daemon assembleDebug
+      - name: Restore signing key
+        if: env.KEYSTORE_B64 != ''
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/signing.p12"
+          # AGP wants a JKS, and the runner ships keytool, so convert in place.
+          keytool -importkeystore -noprompt \
+            -srckeystore "$RUNNER_TEMP/signing.p12" -srcstoretype PKCS12 \
+            -srcstorepass "$KEYSTORE_PASSWORD" -srcalias "$KEY_ALIAS" \
+            -destkeystore "$RUNNER_TEMP/signing.jks" -deststoretype JKS \
+            -deststorepass "$KEYSTORE_PASSWORD" -destkeypass "$KEYSTORE_PASSWORD" \
+            -destalias "$KEY_ALIAS"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/signing.jks" >> "$GITHUB_ENV"
 
-      - name: Rename APK
+      - name: Build APK
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: gradle --no-daemon assembleRelease
+
+      - name: Collect APK
         run: |
           mkdir -p out
-          cp app/build/outputs/apk/debug/app-debug.apk out/hermes-studio-android-debug.apk
+          cp app/build/outputs/apk/release/app-release.apk out/hermes-studio-android.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: hermes-studio-android-debug
-          path: out/hermes-studio-android-debug.apk
+          name: hermes-studio-android
+          path: out/hermes-studio-android.apk
 
-      - name: Publish rolling debug release
+      - name: Publish rolling build
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest-debug
-          name: Latest debug build
+          name: Latest build
           body: |
-            Debug APK built from `main` (${{ github.sha }}).
+            APK built from `main` (${{ github.sha }}), signed with the project key
+            so it installs over the previous version.
 
-            Install on Android: download the `.apk`, then allow installation from
-            unknown sources when prompted.
-          files: out/hermes-studio-android-debug.apk
+            Android will warn that Play Protect has not seen this developer —
+            choose **Install anyway**, which is expected for any app installed
+            outside the Play Store.
+
+            Coming from a build published before 2026-07-30? Uninstall the old app
+            once first: those builds were signed with a throwaway CI key.
+          files: out/hermes-studio-android.apk
           prerelease: true
