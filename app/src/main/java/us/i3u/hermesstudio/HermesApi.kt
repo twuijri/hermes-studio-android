@@ -88,6 +88,7 @@ class HermesApi(
                 model = item.optString("model").takeIf { it.isNotBlank() && it != "—" },
                 active = item.optBoolean("active", false),
                 gatewayStatus = item.optString("gatewayStatus").ifBlank { item.optString("alias") },
+                avatar = AvatarSpec.from(item.optJSONObject("avatar")),
             )
         }.filter { it.name.isNotBlank() }
     }
@@ -320,6 +321,20 @@ class HermesApi(
         )
     }
 
+    /**
+     * Fetches a static file the server publishes next to the web UI, such as
+     * /logo.png. Returns null instead of throwing: branding is decoration, and a
+     * server that does not serve it must not break a launch.
+     */
+    fun asset(path: String): ByteArray? = runCatching {
+        val builder = Request.Builder().url(url(path)).get()
+        if (token.isNotBlank()) builder.header("Authorization", "Bearer $token")
+        client.newCall(builder.build()).execute().use { response ->
+            if (!response.isSuccessful) return null
+            response.body?.bytes()
+        }
+    }.getOrNull()
+
     private fun enc(value: String): String = java.net.URLEncoder.encode(value, "UTF-8")
 
     private fun firstNonBlank(source: JSONObject, vararg keys: String): String? {
@@ -338,6 +353,7 @@ data class Profile(
     val model: String?,
     val active: Boolean,
     val gatewayStatus: String?,
+    val avatar: AvatarSpec? = null,
 )
 
 data class SessionSummary(

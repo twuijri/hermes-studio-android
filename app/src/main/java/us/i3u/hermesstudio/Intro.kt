@@ -36,7 +36,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
@@ -65,24 +64,6 @@ fun LoadingScreen(baseUrl: String) {
             Spacer(Modifier.height(28.dp))
             CircularProgressIndicator(modifier = Modifier.size(22.dp))
         }
-    }
-}
-
-@Composable
-private fun AppMark() {
-    Box(
-        modifier = Modifier
-            .size(76.dp)
-            .clip(RoundedCornerShape(22.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            "H",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
     }
 }
 

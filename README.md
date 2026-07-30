@@ -7,8 +7,13 @@ Not affiliated with EKKOLearnAI.
 The Studio web UI is built for the desktop, so this app talks to the same HTTP API
 directly and renders a native, phone-shaped interface instead of wrapping a web view.
 
-## What works today (v0.6)
+## What works today (v0.7)
 
+- **The same profile pictures Studio shows**: an uploaded avatar, or the Multiavatar
+  generated from the profile name — rendered on the device and cached, so a launch
+  draws them from disk instead of pulling them again
+- **Your Studio logo as the app mark**, fetched from your own server (`/logo.png`) and
+  cached; swap it for any picture on your phone from Settings → Appearance
 - **First-run walkthrough** explaining what the app is and that you supply the
   Hermes Studio server yourself
 - **Splash while the stored session is verified** — the sign-in form only appears when
@@ -73,6 +78,7 @@ the previous version.
 | Profile default model | `GET /api/hermes/config` · `PUT /api/hermes/config/model` |
 | Restart a profile's gateway | `POST /api/hermes/profiles/{name}/gateway/restart` |
 | Send a message | `POST /api/chat-run/runs` |
+| App mark | `GET /logo.png` (static, cached on the device) |
 
 `POST /api/chat-run/runs` is the server's own REST wrapper around its Socket.IO chat
 channel, which is what lets a mobile client get a complete answer without implementing
@@ -86,6 +92,7 @@ written to the app cache, uploaded, and deleted immediately.
 ## Roadmap
 
 - Show the reasoning text a run returns, collapsed under each reply
+- Editing a profile's avatar from the app, not only reading it
 - Profile-level settings, not just per conversation
 - Posting into group chat rooms, not just reading them
 - Streaming replies (Socket.IO) instead of waiting for the final answer
@@ -106,6 +113,17 @@ push, so a local SDK is optional.
 Issues and pull requests are welcome — this is meant to be a community client. If you
 want to port the same API layer to iOS, `HermesApi.kt` is a single self-contained file
 that documents every call the app makes.
+
+## Credits
+
+Generated profile pictures come from the Multiavatar generator, ported to Kotlin so the
+app and the web UI draw the same face for the same profile. Avatars by
+[Multiavatar.com](https://multiavatar.com) — its license ships in
+`app/src/main/assets/multiavatar-LICENSE.txt`.
+
+Hermes Studio's own artwork is **not** bundled in this APK. The logo you see is read
+from the server you connect to, which is also why replacing `logo.png` on that server
+changes the mark here.
 
 ## License
 

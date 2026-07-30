@@ -202,6 +202,7 @@ private fun ChatsScreen(state: UiState, viewModel: AppViewModel) {
         topBar = {
             StudioTopBar(
                 title = "Chats",
+                leading = { AppMark(size = 30.dp, corner = 9.dp) },
                 actions = {
                     IconButton(onClick = { viewModel.startNewConversation() }) {
                         Icon(Icons.Filled.Add, contentDescription = "New chat")
@@ -232,7 +233,9 @@ private fun ChatsScreen(state: UiState, viewModel: AppViewModel) {
                 SectionHeader("CONVERSATIONS", state.sessions.size)
                 LazyColumn {
                     items(state.sessions) { session ->
-                        SessionRow(session) { viewModel.openSession(session) }
+                        SessionRow(session, state.avatarOf(session.profile)) {
+                            viewModel.openSession(session)
+                        }
                         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
                     }
                 }
@@ -242,32 +245,39 @@ private fun ChatsScreen(state: UiState, viewModel: AppViewModel) {
 }
 
 @Composable
-private fun SessionRow(session: SessionSummary, onClick: () -> Unit) {
-    Column(
+private fun SessionRow(session: SessionSummary, avatar: AvatarSpec?, onClick: () -> Unit) {
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = session.title,
-                modifier = Modifier.weight(1f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodyLarge,
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = formatStamp(session.updatedAt),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            session.profile?.let { ProfileDot(it) }
-            Spacer(Modifier.width(6.dp))
+        ProfileAvatar(
+            name = session.profile.orEmpty().ifBlank { "default" },
+            spec = avatar,
+            size = 40.dp,
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = session.title,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = formatStamp(session.updatedAt),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Text(
                 text = listOfNotNull(session.profile, session.model).joinToString(" · "),
                 style = MaterialTheme.typography.labelSmall,
@@ -279,24 +289,10 @@ private fun SessionRow(session: SessionSummary, onClick: () -> Unit) {
     }
 }
 
-/** Small coloured initial, standing in for Studio's generated profile avatar. */
-@Composable
-private fun ProfileDot(name: String) {
-    val palette = listOf(0xFF18A058, 0xFF3B82F6, 0xFFB07CE8, 0xFFE8A33C, 0xFFE86C6C)
-    val color = androidx.compose.ui.graphics.Color(palette[name.hashCode().mod(palette.size)])
-    Box(
-        modifier = Modifier
-            .size(18.dp)
-            .background(color.copy(alpha = 0.25f), RoundedCornerShape(9.dp)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = name.take(1).uppercase(),
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Medium,
-            color = color,
-        )
-    }
+/** The avatar Studio shows for a profile, or null when it is not loaded yet. */
+private fun UiState.avatarOf(profile: String?): AvatarSpec? {
+    val name = profile?.ifBlank { null } ?: activeProfile
+    return profiles.firstOrNull { it.name == name }?.avatar
 }
 
 @Composable
@@ -461,6 +457,7 @@ private fun ConversationScreen(state: UiState, viewModel: AppViewModel) {
     }
 
     val profile = state.openSession?.profile ?: state.activeProfile
+    val avatar = state.avatarOf(profile)
     Scaffold(
         topBar = {
             StudioTopBar(
@@ -468,6 +465,9 @@ private fun ConversationScreen(state: UiState, viewModel: AppViewModel) {
                 subtitle = listOfNotNull(profile.ifBlank { null }, state.openSession?.model)
                     .joinToString(" · ")
                     .ifBlank { null },
+                leading = {
+                    ProfileAvatar(profile.ifBlank { "default" }, avatar, size = 32.dp)
+                },
                 onBack = { viewModel.back() },
                 actions = {
                     IconButton(onClick = { viewModel.startNewConversation() }) {
@@ -499,7 +499,13 @@ private fun ConversationScreen(state: UiState, viewModel: AppViewModel) {
                     contentPadding = PaddingValues(12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(state.lines) { line -> MessageBubble(line) }
+                    items(state.lines) { line ->
+                        MessageBubble(
+                            line = line,
+                            profile = profile.ifBlank { "default" },
+                            avatar = avatar,
+                        )
+                    }
                 }
             }
 
@@ -531,7 +537,7 @@ private fun ConversationScreen(state: UiState, viewModel: AppViewModel) {
 }
 
 @Composable
-private fun MessageBubble(line: ChatLine) {
+private fun MessageBubble(line: ChatLine, profile: String? = null, avatar: AvatarSpec? = null) {
     val alignment = if (line.fromUser) Alignment.CenterEnd else Alignment.CenterStart
     val container = when {
         line.isError -> MaterialTheme.colorScheme.errorContainer
@@ -539,23 +545,31 @@ private fun MessageBubble(line: ChatLine) {
         else -> MaterialTheme.colorScheme.surfaceVariant
     }
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = alignment) {
-        Card(colors = CardDefaults.cardColors(containerColor = container)) {
-            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                line.sender?.let {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Text(text = line.text)
-                val stamp = formatStamp(line.timestamp)
-                if (stamp.isNotBlank()) {
-                    Text(
-                        stamp,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+        Row(verticalAlignment = Alignment.Bottom) {
+            // The agent's picture rides with its own replies, the way Studio
+            // shows it in the transcript.
+            if (!line.fromUser && !profile.isNullOrBlank()) {
+                ProfileAvatar(profile, avatar, size = 26.dp)
+                Spacer(Modifier.width(8.dp))
+            }
+            Card(colors = CardDefaults.cardColors(containerColor = container)) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    line.sender?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Text(text = line.text)
+                    val stamp = formatStamp(line.timestamp)
+                    if (stamp.isNotBlank()) {
+                        Text(
+                            stamp,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
         }
@@ -596,8 +610,8 @@ private fun ProfilesScreen(state: UiState, viewModel: AppViewModel) {
                             .padding(horizontal = 16.dp, vertical = 14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        ProfileDot(profile.name)
-                        Spacer(Modifier.width(10.dp))
+                        ProfileAvatar(profile.name, profile.avatar, size = 42.dp)
+                        Spacer(Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(profile.name, style = MaterialTheme.typography.bodyLarge)
                             Text(
@@ -1080,6 +1094,15 @@ private fun readAndAttach(
 private fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
     var modelSheet by remember { mutableStateOf(false) }
     val profile = state.activeProfile.ifBlank { "default" }
+    val context = LocalContext.current
+
+    val pickLogo = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        val bytes = runCatching {
+            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        }.getOrNull()
+        if (bytes != null && bytes.isNotEmpty()) viewModel.setAppLogo(bytes)
+    }
 
     if (modelSheet) {
         ModalBottomSheet(
@@ -1157,6 +1180,31 @@ private fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
                 onClick = { viewModel.restartGateway() },
             )
 
+            SettingsSection("Appearance")
+            LogoRow(
+                value = when {
+                    AppLogo.isCustom -> "A picture from this device"
+                    AppLogo.image != null -> "The logo your Studio server serves"
+                    else -> "Not loaded yet — tap to choose one"
+                },
+                onClick = { pickLogo.launch("image/*") },
+            )
+            if (AppLogo.isCustom) {
+                SettingsRow(
+                    icon = Icons.Filled.Refresh,
+                    label = "Use the Studio logo",
+                    value = "Drops the picture stored on this device",
+                    onClick = { viewModel.resetAppLogo() },
+                )
+            }
+            Text(
+                "The mark on the launch screen and in the chat header. It is fetched from your own " +
+                    "server, so replacing logo.png there changes it here too.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+
             SettingsSection("This device")
             SettingsRow(
                 icon = Icons.Filled.Psychology,
@@ -1182,7 +1230,8 @@ private fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
             SettingsSection("About")
             SettingsRow(icon = Icons.Filled.Chat, label = "Version", value = BuildConfig.VERSION_NAME)
             Text(
-                "Unofficial community client for Hermes Studio.",
+                "Unofficial community client for Hermes Studio. Generated profile pictures: " +
+                    "avatars by Multiavatar.com.",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
@@ -1234,6 +1283,33 @@ private fun SettingsRow(
     HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
 }
 
+/** Settings row that previews the current app mark instead of an icon. */
+@Composable
+private fun LogoRow(value: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        AppMark(size = 34.dp, corner = 10.dp)
+        Column(modifier = Modifier.weight(1f)) {
+            Text("App logo", style = MaterialTheme.typography.bodyLarge)
+            Text(
+                value,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Text("›", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+}
+
 @Composable
 private fun NoticeNote(message: String, onDismiss: () -> Unit) {
     Card(
@@ -1255,20 +1331,27 @@ private fun StudioTopBar(
     title: String,
     subtitle: String? = null,
     onBack: (() -> Unit)? = null,
+    leading: @Composable (() -> Unit)? = null,
     actions: @Composable () -> Unit = {},
 ) {
     TopAppBar(
         title = {
-            Column {
-                Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                subtitle?.let {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (leading != null) {
+                    leading()
+                    Spacer(Modifier.width(10.dp))
+                }
+                Column(modifier = Modifier.weight(1f, fill = false)) {
+                    Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    subtitle?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
         },

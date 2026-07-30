@@ -80,6 +80,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val state: StateFlow<UiState> = _state.asStateFlow()
 
     init {
+        // The cached mark is on disk, so the launch screen can show it at once.
+        viewModelScope.launch { AppLogo.load(app) }
         if (store.isConfigured) restoreSession()
     }
 
@@ -104,6 +106,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     error = null,
                 )
             }
+            syncBranding()
         },
         onFailure = { failure ->
             store.clearCredentials()
@@ -153,8 +156,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         error = null,
                     )
                 }
+                syncBranding()
             },
         )
+    }
+
+    /** Pulls the Studio logo from the connected server for the launch screen. */
+    private fun syncBranding(force: Boolean = false) {
+        viewModelScope.launch {
+            runCatching { AppLogo.syncFromServer(getApplication<Application>(), api, force) }
+        }
     }
 
     // ── lists ─────────────────────────────────────────────────────────────
@@ -475,6 +486,32 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 .onFailure { failure ->
                     _state.update { it.copy(savingSetting = false, error = failure.readableMessage()) }
                 }
+        }
+    }
+
+    /** Replaces the app mark with a picture from the device. */
+    fun setAppLogo(bytes: ByteArray) {
+        viewModelScope.launch {
+            val applied = AppLogo.setCustom(getApplication<Application>(), bytes)
+            _state.update {
+                if (applied) it.copy(notice = "App logo updated", error = null)
+                else it.copy(error = "That image could not be read")
+            }
+        }
+    }
+
+    /** Goes back to whatever logo the connected Studio serves. */
+    fun resetAppLogo() {
+        viewModelScope.launch {
+            AppLogo.clearCustom(getApplication<Application>())
+            runCatching { AppLogo.syncFromServer(getApplication<Application>(), api, force = true) }
+            _state.update {
+                if (AppLogo.image != null) {
+                    it.copy(notice = "Using the logo from your Studio server", error = null)
+                } else {
+                    it.copy(error = "That server did not return a logo")
+                }
+            }
         }
     }
 
