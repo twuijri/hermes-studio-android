@@ -7,7 +7,7 @@ Not affiliated with EKKOLearnAI.
 The Studio web UI is built for the desktop, so this app talks to the same HTTP API
 directly and renders a native, phone-shaped interface instead of wrapping a web view.
 
-## What works today (v0.2)
+## What works today (v0.3)
 
 - Sign in with your Studio server address, username and password
 - Bearer token stored in `EncryptedSharedPreferences`, backed by the Android Keystore
@@ -17,6 +17,10 @@ directly and renders a native, phone-shaped interface instead of wrapping a web 
   talking in the same session
 - **All profiles filter**, matching Studio's dropdown, or scope the list to one profile
 - **Group chat tab**: rooms with agent and member counts, open a room to read its messages
+- **Attachments**: pick an image or any file, it uploads to your server and rides
+  along with the message as a proper content block
+- **Voice**: hold the mic to record, then either transcribe it into the composer
+  through your Studio STT provider or send the recording itself as an attachment
 - Profiles screen to switch which agent a new chat talks to
 - Start a fresh conversation at any time
 - Studio's dark palette, RTL-aware layout (Arabic reads correctly)
@@ -40,17 +44,22 @@ Every push to `main` rebuilds that release, so the link always points at the new
 | Conversation history | `GET /api/hermes/sessions/conversations/{id}/messages` |
 | Group chat rooms | `GET /api/hermes/group-chat/rooms` |
 | Room detail and messages | `GET /api/hermes/group-chat/rooms/{id}` |
+| Upload an attachment | `POST /upload?profile=…` |
+| Transcribe a recording | `POST /api/hermes/stt/transcribe` |
 | Send a message | `POST /api/chat-run/runs` |
 
 `POST /api/chat-run/runs` is the server's own REST wrapper around its Socket.IO chat
 channel, which is what lets a mobile client get a complete answer without implementing
 the streaming protocol.
 
-All traffic goes to the address you enter, over HTTPS. Nothing is sent anywhere else,
-there is no analytics, and the app has only the `INTERNET` permission.
+All traffic goes to the address you enter, over HTTPS. Nothing is sent anywhere else and
+there is no analytics. The app asks for `INTERNET`, plus `RECORD_AUDIO` only when you
+first tap the microphone; recordings are written to the app cache, uploaded, and deleted
+immediately.
 
 ## Roadmap
 
+- Reasoning view per conversation
 - Settings: change a profile's model and provider from the phone
 - Posting into group chat rooms, not just reading them
 - Streaming replies (Socket.IO) instead of waiting for the final answer

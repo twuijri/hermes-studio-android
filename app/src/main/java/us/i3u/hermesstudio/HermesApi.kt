@@ -1,6 +1,7 @@
 package us.i3u.hermesstudio
 
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -169,6 +170,49 @@ class HermesApi(
         return RoomDetail(id = roomId, name = name, agents = agentNames, messages = messages)
     }
 
+    private fun multipart(path: String, field: String, bytes: ByteArray, filename: String, mime: String): JSONObject {
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart(field, filename, bytes.toRequestBody(mime.toMediaType()))
+            .build()
+        val builder = Request.Builder().url(url(path)).post(body)
+        if (token.isNotBlank()) builder.header("Authorization", "Bearer $token")
+        builder.header("Accept", "application/json")
+
+        client.newCall(builder.build()).execute().use { response ->
+            val text = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                val detail = runCatching { JSONObject(text).optString("error") }.getOrNull()
+                throw HermesException(
+                    if (detail.isNullOrBlank()) "HTTP ${response.code}" else "HTTP ${response.code}: $detail",
+                )
+            }
+            return runCatching { JSONObject(text) }.getOrElse { JSONObject() }
+        }
+    }
+
+    /** POST /upload — stores the file under the profile upload dir and returns its path. */
+    fun upload(profile: String, bytes: ByteArray, filename: String, mime: String): Upload {
+        val result = multipart("/upload?profile=${enc(profile)}", "files", bytes, filename, mime)
+        val files = result.optJSONArray("files") ?: JSONArray()
+        val first = files.optJSONObject(0) ?: throw HermesException("Upload returned no file")
+        return Upload(
+            name = first.optString("name").ifBlank { filename },
+            path = first.optString("path"),
+            mime = mime,
+        )
+    }
+
+    /**
+     * POST /api/hermes/stt/transcribe — turns a recording into text with the
+     * profile's configured provider, the same call the web composer makes.
+     */
+    fun transcribe(profile: String, bytes: ByteArray, filename: String, mime: String): String {
+        val result = multipart("/api/hermes/stt/transcribe?profile=${enc(profile)}", "audio", bytes, filename, mime)
+        return firstNonBlank(result, "text", "transcript", "output")
+            ?: throw HermesException("The provider returned no text")
+    }
+
     /**
      * POST /api/chat-run/runs — run one turn and wait for the final answer.
      *
@@ -176,9 +220,35 @@ class HermesApi(
      * channel, so a mobile client gets a complete reply without speaking the
      * streaming protocol.
      */
-    fun sendMessage(profile: String, input: String, sessionId: String?): ChatReply {
+    fun sendMessage(
+        profile: String,
+        input: String,
+        sessionId: String?,
+        attachments: List<Upload> = emptyList(),
+    ): ChatReply {
+        // Studio sends either a plain string or an array of content blocks; the
+        // block form is what carries images and files.
+        val payload: Any = if (attachments.isEmpty()) {
+            input
+        } else {
+            JSONArray().apply {
+                if (input.isNotBlank()) {
+                    put(JSONObject().put("type", "text").put("text", input))
+                }
+                attachments.forEach { file ->
+                    put(
+                        JSONObject()
+                            .put("type", if (file.mime.startsWith("image/")) "image" else "file")
+                            .put("name", file.name)
+                            .put("path", file.path)
+                            .put("media_type", file.mime),
+                    )
+                }
+            }
+        }
+
         val body = JSONObject()
-            .put("input", input)
+            .put("input", payload)
             .put("profile", profile)
             .put("timeout_ms", 240_000)
         if (!sessionId.isNullOrBlank()) body.put("session_id", sessionId)
@@ -220,6 +290,12 @@ data class SessionSummary(
     val model: String?,
     val updatedAt: String?,
     val profile: String? = null,
+)
+
+data class Upload(
+    val name: String,
+    val path: String,
+    val mime: String,
 )
 
 data class Message(

@@ -1,8 +1,14 @@
 package us.i3u.hermesstudio
 
+import android.Manifest
+import android.content.Context
+import android.net.Uri
 import android.os.Bundle
+import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -27,6 +33,11 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Logout
@@ -37,6 +48,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -61,8 +73,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -416,6 +431,13 @@ private fun ConversationScreen(state: UiState, viewModel: AppViewModel) {
         if (state.lines.isNotEmpty()) listState.animateScrollToItem(state.lines.lastIndex)
     }
 
+    LaunchedEffect(state.transcript) {
+        state.transcript?.let { text ->
+            draft = if (draft.isBlank()) text else "$draft $text"
+            viewModel.consumeTranscript()
+        }
+    }
+
     val profile = state.openSession?.profile ?: state.activeProfile
     Scaffold(
         topBar = {
@@ -472,28 +494,16 @@ private fun ConversationScreen(state: UiState, viewModel: AppViewModel) {
 
             state.error?.let { ErrorNote(it) { viewModel.dismissError() } }
 
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(8.dp),
-                verticalAlignment = Alignment.Bottom,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                OutlinedTextField(
-                    value = draft,
-                    onValueChange = { draft = it },
-                    placeholder = { Text("Message") },
-                    modifier = Modifier.weight(1f),
-                    maxLines = 5,
-                )
-                IconButton(
-                    onClick = {
-                        viewModel.send(draft)
-                        draft = ""
-                    },
-                    enabled = draft.isNotBlank() && !state.sending,
-                ) {
-                    Icon(Icons.Filled.Send, contentDescription = "Send")
-                }
-            }
+            Composer(
+                state = state,
+                draft = draft,
+                onDraftChange = { draft = it },
+                onSend = {
+                    viewModel.send(draft)
+                    draft = ""
+                },
+                viewModel = viewModel,
+            )
         }
     }
 }
@@ -587,6 +597,120 @@ private fun ProfilesScreen(state: UiState, viewModel: AppViewModel) {
             }
         }
     }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun Composer(
+    state: UiState,
+    draft: String,
+    onDraftChange: (String) -> Unit,
+    onSend: () -> Unit,
+    viewModel: AppViewModel,
+) {
+    val context = LocalContext.current
+
+    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let { readAndAttach(context, it, viewModel) }
+    }
+    val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let { readAndAttach(context, it, viewModel) }
+    }
+    val askMic = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) viewModel.startRecording()
+    }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        if (state.attachments.isNotEmpty() || state.attaching) {
+            FlowRow(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                state.attachments.forEach { file ->
+                    AssistChip(
+                        onClick = { viewModel.removeAttachment(file) },
+                        label = { Text(file.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        trailingIcon = { Icon(Icons.Filled.Close, contentDescription = "Remove") },
+                    )
+                }
+                if (state.attaching) {
+                    AssistChip(onClick = {}, label = { Text("Uploading…") })
+                }
+            }
+        }
+
+        if (state.recording || state.transcribing) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(14.dp))
+                Text(
+                    if (state.recording) "Recording — tap stop to transcribe" else "Transcribing…",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                if (state.recording) {
+                    TextButton(onClick = { viewModel.stopRecordingAndAttach() }) { Text("Send as audio") }
+                    TextButton(onClick = { viewModel.cancelRecording() }) { Text("Cancel") }
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(8.dp),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            IconButton(onClick = { pickImage.launch("image/*") }, enabled = !state.sending) {
+                Icon(Icons.Filled.Image, contentDescription = "Attach image")
+            }
+            IconButton(onClick = { pickFile.launch("*/*") }, enabled = !state.sending) {
+                Icon(Icons.Filled.AttachFile, contentDescription = "Attach file")
+            }
+            OutlinedTextField(
+                value = draft,
+                onValueChange = onDraftChange,
+                placeholder = { Text("Message") },
+                modifier = Modifier.weight(1f),
+                maxLines = 5,
+            )
+            if (state.recording) {
+                IconButton(onClick = { viewModel.stopRecordingAndTranscribe() }) {
+                    Icon(Icons.Filled.Stop, contentDescription = "Stop and transcribe")
+                }
+            } else {
+                IconButton(
+                    onClick = { askMic.launch(Manifest.permission.RECORD_AUDIO) },
+                    enabled = !state.sending && !state.transcribing,
+                ) {
+                    Icon(Icons.Filled.Mic, contentDescription = "Record voice")
+                }
+            }
+            IconButton(
+                onClick = onSend,
+                enabled = (draft.isNotBlank() || state.attachments.isNotEmpty()) && !state.sending,
+            ) {
+                Icon(Icons.Filled.Send, contentDescription = "Send")
+            }
+        }
+    }
+}
+
+/** Reads a picked document through the content resolver and hands it to the upload. */
+private fun readAndAttach(context: Context, uri: Uri, viewModel: AppViewModel) {
+    val resolver = context.contentResolver
+    val mime = resolver.getType(uri) ?: "application/octet-stream"
+    var name = "attachment"
+    runCatching {
+        resolver.query(uri, null, null, null, null)?.use { cursor ->
+            val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (index >= 0 && cursor.moveToFirst()) name = cursor.getString(index) ?: name
+        }
+    }
+    val bytes = runCatching { resolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
+    if (bytes == null || bytes.isEmpty()) return
+    viewModel.attach(bytes, name, mime)
 }
 
 // ── shared pieces ────────────────────────────────────────────────────────

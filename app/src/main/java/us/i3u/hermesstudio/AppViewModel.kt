@@ -42,12 +42,19 @@ data class UiState(
     val lines: List<ChatLine> = emptyList(),
     val loadingHistory: Boolean = false,
     val sending: Boolean = false,
+    val attachments: List<Upload> = emptyList(),
+    val attaching: Boolean = false,
+    val recording: Boolean = false,
+    val transcribing: Boolean = false,
+    /** Text produced by the last recording, consumed by the composer. */
+    val transcript: String? = null,
 )
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val store = Store(app)
     private val api = HermesApi(store.baseUrl, store.token)
+    private val recorder = Recorder(app)
 
     private val _state = MutableStateFlow(UiState(baseUrl = store.baseUrl))
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -213,19 +220,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun send(message: String) {
         val text = message.trim()
-        if (text.isEmpty() || _state.value.sending) return
+        val files = _state.value.attachments
+        if ((text.isEmpty() && files.isEmpty()) || _state.value.sending) return
         val session = _state.value.openSession
         val profile = session?.profile?.ifBlank { null }
             ?: _state.value.activeProfile.ifBlank { "default" }
 
+        val echo = if (files.isEmpty()) text else {
+            listOf(text.ifBlank { null }, files.joinToString(", ") { "📎 " + it.name })
+                .filterNotNull()
+                .joinToString("\n")
+        }
         _state.update {
-            it.copy(lines = it.lines + ChatLine(text, fromUser = true), sending = true, error = null)
+            it.copy(
+                lines = it.lines + ChatLine(echo, fromUser = true),
+                sending = true,
+                attachments = emptyList(),
+                error = null,
+            )
         }
 
         viewModelScope.launch {
             val stored = store.sessionFor(profile).ifBlank { session?.id }
             runCatching {
-                withContext(Dispatchers.IO) { api.sendMessage(profile, text, stored) }
+                withContext(Dispatchers.IO) { api.sendMessage(profile, text, stored, files) }
             }.onSuccess { reply ->
                 reply.sessionId?.let { store.setSessionFor(profile, it) }
                 val line = if (reply.error != null && reply.output.isBlank()) {
@@ -244,6 +262,82 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
     }
+
+    // ── attachments ───────────────────────────────────────────────────────
+
+    /** Uploads the picked file to the server so the agent can read it by path. */
+    fun attach(bytes: ByteArray, filename: String, mime: String) {
+        val profile = currentProfile()
+        _state.update { it.copy(attaching = true, error = null) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.upload(profile, bytes, filename, mime) } }
+                .onSuccess { upload ->
+                    _state.update { it.copy(attaching = false, attachments = it.attachments + upload) }
+                }
+                .onFailure { failure ->
+                    _state.update { it.copy(attaching = false, error = failure.readableMessage()) }
+                }
+        }
+    }
+
+    fun removeAttachment(upload: Upload) {
+        _state.update { it.copy(attachments = it.attachments - upload) }
+    }
+
+    // ── voice ─────────────────────────────────────────────────────────────
+
+    fun startRecording() {
+        if (_state.value.recording) return
+        if (recorder.start()) {
+            _state.update { it.copy(recording = true, error = null) }
+        } else {
+            _state.update { it.copy(error = "Could not start the microphone") }
+        }
+    }
+
+    fun cancelRecording() {
+        recorder.cancel()
+        _state.update { it.copy(recording = false) }
+    }
+
+    /** Stops the take and turns it into text with the profile's STT provider. */
+    fun stopRecordingAndTranscribe() {
+        if (!_state.value.recording) return
+        val bytes = recorder.stop()
+        _state.update { it.copy(recording = false) }
+        if (bytes == null) {
+            _state.update { it.copy(error = "That recording was too short") }
+            return
+        }
+
+        val profile = currentProfile()
+        _state.update { it.copy(transcribing = true, error = null) }
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    api.transcribe(profile, bytes, "voice.m4a", "audio/mp4")
+                }
+            }.onSuccess { text ->
+                _state.update { it.copy(transcribing = false, transcript = text) }
+            }.onFailure { failure ->
+                _state.update { it.copy(transcribing = false, error = failure.readableMessage()) }
+            }
+        }
+    }
+
+    /** Sends the recorded audio itself instead of its transcript. */
+    fun stopRecordingAndAttach() {
+        if (!_state.value.recording) return
+        val bytes = recorder.stop()
+        _state.update { it.copy(recording = false) }
+        if (bytes == null) {
+            _state.update { it.copy(error = "That recording was too short") }
+            return
+        }
+        attach(bytes, "voice-${System.currentTimeMillis()}.m4a", "audio/mp4")
+    }
+
+    fun consumeTranscript() = _state.update { it.copy(transcript = null) }
 
     // ── group room ────────────────────────────────────────────────────────
 
@@ -277,6 +371,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         store.clearCredentials()
         _state.update { UiState(baseUrl = store.baseUrl) }
     }
+
+    private fun currentProfile(): String =
+        _state.value.openSession?.profile?.ifBlank { null }
+            ?: _state.value.activeProfile.ifBlank { "default" }
 
     private fun pickProfile(profiles: List<Profile>): String {
         val stored = store.profile
