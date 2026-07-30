@@ -11,24 +11,36 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-enum class Screen { Login, Profiles, Chat, Sessions }
+enum class Screen { Login, Chats, Groups, Conversation, Room, Profiles }
+
+/** The two list tabs, mirroring Studio's chat / group-chat switch. */
+enum class Tab { Chats, Groups }
 
 data class ChatLine(
     val text: String,
     val fromUser: Boolean,
     val isError: Boolean = false,
+    val timestamp: String? = null,
+    val sender: String? = null,
 )
 
 data class UiState(
     val screen: Screen = Screen.Login,
+    val tab: Tab = Tab.Chats,
     val baseUrl: String = "",
     val busy: Boolean = false,
     val error: String? = null,
     val account: String? = null,
     val profiles: List<Profile> = emptyList(),
+    /** Blank means "All profiles", the same default Studio shows. */
+    val profileFilter: String = "",
     val activeProfile: String = "",
     val sessions: List<SessionSummary> = emptyList(),
+    val rooms: List<Room> = emptyList(),
+    val openSession: SessionSummary? = null,
+    val openRoom: RoomDetail? = null,
     val lines: List<ChatLine> = emptyList(),
+    val loadingHistory: Boolean = false,
     val sending: Boolean = false,
 )
 
@@ -41,33 +53,27 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val state: StateFlow<UiState> = _state.asStateFlow()
 
     init {
-        if (store.isConfigured) {
-            _state.update { it.copy(activeProfile = store.profile) }
-            restoreSession()
-        }
+        if (store.isConfigured) restoreSession()
     }
 
     private fun restoreSession() = launchWork(
         work = {
             api.update(store.baseUrl, store.token)
-            val account = api.verifyToken()
-            val profiles = api.profiles()
-            account to profiles
+            Triple(api.verifyToken(), api.profiles(), api.sessions(null))
         },
-        onSuccess = { (account, profiles) ->
-            val active = pickProfile(profiles)
+        onSuccess = { (account, profiles, sessions) ->
             _state.update {
                 it.copy(
-                    screen = Screen.Chat,
+                    screen = Screen.Chats,
                     account = account,
                     profiles = profiles,
-                    activeProfile = active,
+                    activeProfile = pickProfile(profiles),
+                    sessions = sessions,
                     error = null,
                 )
             }
         },
         onFailure = {
-            // A stale token should land the user on the login screen, not an error wall.
             store.clearCredentials()
             _state.update { it.copy(screen = Screen.Login, error = null) }
         },
@@ -91,24 +97,58 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 store.baseUrl = normalized
                 store.token = token
                 api.update(normalized, token)
-                val account = api.verifyToken()
-                val profiles = api.profiles()
-                Triple(account, profiles, normalized)
+                listOf(api.verifyToken(), api.profiles(), api.sessions(null))
             },
-            onSuccess = { (account, profiles, url) ->
-                val active = pickProfile(profiles)
+            onSuccess = { parts ->
+                @Suppress("UNCHECKED_CAST")
+                val profiles = parts[1] as List<Profile>
+
+                @Suppress("UNCHECKED_CAST")
+                val sessions = parts[2] as List<SessionSummary>
                 _state.update {
                     it.copy(
-                        screen = Screen.Chat,
-                        baseUrl = url,
-                        account = account,
+                        screen = Screen.Chats,
+                        baseUrl = normalized,
+                        account = parts[0] as String,
                         profiles = profiles,
-                        activeProfile = active,
+                        activeProfile = pickProfile(profiles),
+                        sessions = sessions,
                         error = null,
                     )
                 }
             },
         )
+    }
+
+    // ── lists ─────────────────────────────────────────────────────────────
+
+    fun showTab(tab: Tab) {
+        _state.update { it.copy(tab = tab, error = null) }
+        when (tab) {
+            Tab.Chats -> {
+                _state.update { it.copy(screen = Screen.Chats) }
+                if (_state.value.sessions.isEmpty()) refreshSessions()
+            }
+            Tab.Groups -> {
+                _state.update { it.copy(screen = Screen.Groups) }
+                if (_state.value.rooms.isEmpty()) refreshRooms()
+            }
+        }
+    }
+
+    fun refreshSessions() = launchWork(
+        work = { api.sessions(_state.value.profileFilter.ifBlank { null }) },
+        onSuccess = { sessions -> _state.update { it.copy(sessions = sessions) } },
+    )
+
+    fun refreshRooms() = launchWork(
+        work = { api.rooms() },
+        onSuccess = { rooms -> _state.update { it.copy(rooms = rooms) } },
+    )
+
+    fun setProfileFilter(profile: String) {
+        _state.update { it.copy(profileFilter = profile) }
+        refreshSessions()
     }
 
     fun refreshProfiles() = launchWork(
@@ -120,56 +160,73 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun selectProfile(name: String) {
         store.profile = name
-        _state.update { it.copy(activeProfile = name, lines = emptyList(), screen = Screen.Chat) }
+        _state.update { it.copy(activeProfile = name, screen = Screen.Chats, tab = Tab.Chats) }
     }
 
-    fun loadSessions() {
-        val profile = _state.value.activeProfile.ifBlank { "default" }
-        _state.update { it.copy(screen = Screen.Sessions) }
-        launchWork(
-            work = { api.sessions(profile) },
-            onSuccess = { sessions -> _state.update { it.copy(sessions = sessions) } },
-        )
-    }
+    // ── conversation ──────────────────────────────────────────────────────
 
-    /** Continue an existing conversation: later turns reuse this session id. */
-    fun continueSession(session: SessionSummary) {
-        val profile = _state.value.activeProfile.ifBlank { "default" }
-        store.setSessionFor(profile, session.id)
+    /** Open an existing Studio conversation and load its history. */
+    fun openSession(session: SessionSummary) {
+        val profile = session.profile ?: _state.value.activeProfile
+        store.setSessionFor(profile.ifBlank { "default" }, session.id)
         _state.update {
             it.copy(
-                screen = Screen.Chat,
-                lines = listOf(ChatLine("Continuing “${session.title}”", fromUser = false)),
+                screen = Screen.Conversation,
+                openSession = session,
+                lines = emptyList(),
+                loadingHistory = true,
+                error = null,
             )
+        }
+
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.messages(session.id) } }
+                .onSuccess { history ->
+                    _state.update { state ->
+                        state.copy(
+                            loadingHistory = false,
+                            lines = history.map { message ->
+                                ChatLine(
+                                    text = message.content,
+                                    fromUser = message.fromUser,
+                                    timestamp = message.timestamp,
+                                )
+                            },
+                        )
+                    }
+                }
+                .onFailure { failure ->
+                    _state.update {
+                        it.copy(loadingHistory = false, error = failure.readableMessage())
+                    }
+                }
         }
     }
 
     fun startNewConversation() {
         val profile = _state.value.activeProfile.ifBlank { "default" }
         store.setSessionFor(profile, "")
-        _state.update { it.copy(lines = emptyList(), error = null) }
+        _state.update {
+            it.copy(screen = Screen.Conversation, openSession = null, lines = emptyList(), error = null)
+        }
     }
 
     fun send(message: String) {
         val text = message.trim()
         if (text.isEmpty() || _state.value.sending) return
-        val profile = _state.value.activeProfile.ifBlank { "default" }
+        val session = _state.value.openSession
+        val profile = session?.profile?.ifBlank { null }
+            ?: _state.value.activeProfile.ifBlank { "default" }
 
         _state.update {
-            it.copy(
-                lines = it.lines + ChatLine(text, fromUser = true),
-                sending = true,
-                error = null,
-            )
+            it.copy(lines = it.lines + ChatLine(text, fromUser = true), sending = true, error = null)
         }
 
         viewModelScope.launch {
-            val result = runCatching {
-                withContext(Dispatchers.IO) {
-                    api.sendMessage(profile, text, store.sessionFor(profile).ifBlank { null })
-                }
-            }
-            result.onSuccess { reply ->
+            val stored = store.sessionFor(profile).ifBlank { session?.id }
+            runCatching {
+                withContext(Dispatchers.IO) { api.sendMessage(profile, text, stored) }
+            }.onSuccess { reply ->
                 reply.sessionId?.let { store.setSessionFor(profile, it) }
                 val line = if (reply.error != null && reply.output.isBlank()) {
                     ChatLine(reply.error, fromUser = false, isError = true)
@@ -186,6 +243,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
+    }
+
+    // ── group room ────────────────────────────────────────────────────────
+
+    fun openRoom(room: Room) {
+        _state.update {
+            it.copy(screen = Screen.Room, openRoom = null, loadingHistory = true, error = null)
+        }
+        launchWork(
+            work = { api.room(room.id) },
+            onSuccess = { detail ->
+                _state.update { it.copy(openRoom = detail, loadingHistory = false) }
+            },
+            onFailure = { failure ->
+                _state.update { it.copy(loadingHistory = false, error = failure.readableMessage()) }
+            },
+        )
+    }
+
+    // ── misc ──────────────────────────────────────────────────────────────
+
+    fun back() {
+        val target = if (_state.value.tab == Tab.Groups) Screen.Groups else Screen.Chats
+        _state.update { it.copy(screen = target, error = null) }
     }
 
     fun show(screen: Screen) = _state.update { it.copy(screen = screen, error = null) }

@@ -91,8 +91,12 @@ class HermesApi(
     }
 
     /** GET /api/hermes/sessions — most recent conversations for a profile. */
-    fun sessions(profile: String, limit: Int = 50): List<SessionSummary> {
-        val path = "/api/hermes/sessions?profile=${enc(profile)}&limit=$limit"
+    fun sessions(profile: String?, limit: Int = 80): List<SessionSummary> {
+        val path = if (profile.isNullOrBlank()) {
+            "/api/hermes/sessions?limit=$limit"
+        } else {
+            "/api/hermes/sessions?profile=${enc(profile)}&limit=$limit"
+        }
         val array = call(path).optJSONArray("sessions") ?: JSONArray()
         return (0 until array.length()).mapNotNull { index ->
             val item = array.optJSONObject(index) ?: return@mapNotNull null
@@ -102,8 +106,67 @@ class HermesApi(
                 title = firstNonBlank(item, "title", "name", "summary") ?: id.take(8),
                 model = firstNonBlank(item, "model"),
                 updatedAt = firstNonBlank(item, "updated_at", "updatedAt", "created_at", "createdAt"),
+                profile = firstNonBlank(item, "profile"),
             )
         }
+    }
+
+    /** GET /api/hermes/sessions/conversations/{id}/messages — existing history. */
+    fun messages(sessionId: String, humanOnly: Boolean = true): List<Message> {
+        val path = "/api/hermes/sessions/conversations/${enc(sessionId)}/messages?humanOnly=$humanOnly"
+        val array = call(path).optJSONArray("messages") ?: JSONArray()
+        return (0 until array.length()).mapNotNull { index ->
+            val item = array.optJSONObject(index) ?: return@mapNotNull null
+            val content = item.optString("content")
+            if (content.isBlank()) return@mapNotNull null
+            Message(
+                id = item.optString("id"),
+                role = item.optString("role").ifBlank { "assistant" },
+                content = content,
+                timestamp = firstNonBlank(item, "timestamp", "created_at", "createdAt"),
+            )
+        }
+    }
+
+    /** GET /api/hermes/group-chat/rooms */
+    fun rooms(): List<Room> {
+        val array = call("/api/hermes/group-chat/rooms").optJSONArray("rooms") ?: JSONArray()
+        return (0 until array.length()).mapNotNull { index ->
+            val item = array.optJSONObject(index) ?: return@mapNotNull null
+            val id = firstNonBlank(item, "id", "roomId", "room_id") ?: return@mapNotNull null
+            Room(
+                id = id,
+                name = firstNonBlank(item, "name", "title") ?: id.take(8),
+                agentCount = item.optInt("agentCount", item.optJSONArray("agents")?.length() ?: 0),
+                memberCount = item.optInt("memberCount", item.optJSONArray("members")?.length() ?: 0),
+                updatedAt = firstNonBlank(item, "updatedAt", "updated_at", "lastMessageAt"),
+            )
+        }
+    }
+
+    /** GET /api/hermes/group-chat/rooms/{id} — room detail plus recent messages. */
+    fun room(roomId: String, limit: Int = 80): RoomDetail {
+        val result = call("/api/hermes/group-chat/rooms/${enc(roomId)}?limit=$limit&offset=0")
+        val roomObject = result.optJSONObject("room")
+        val name = roomObject?.let { firstNonBlank(it, "name", "title") } ?: roomId
+        val agents = result.optJSONArray("agents") ?: JSONArray()
+        val agentNames = (0 until agents.length()).mapNotNull { index ->
+            agents.optJSONObject(index)?.let { firstNonBlank(it, "name", "profile", "agentId") }
+        }
+        val array = result.optJSONArray("messages") ?: JSONArray()
+        val messages = (0 until array.length()).mapNotNull { index ->
+            val item = array.optJSONObject(index) ?: return@mapNotNull null
+            val content = item.optString("content")
+            if (content.isBlank()) return@mapNotNull null
+            RoomMessage(
+                id = item.optString("id"),
+                sender = firstNonBlank(item, "senderName", "sender_name", "senderId") ?: "?",
+                content = content,
+                isAgent = item.optString("role") == "assistant",
+                timestamp = firstNonBlank(item, "timestamp", "created_at", "createdAt"),
+            )
+        }
+        return RoomDetail(id = roomId, name = name, agents = agentNames, messages = messages)
     }
 
     /**
@@ -156,6 +219,39 @@ data class SessionSummary(
     val title: String,
     val model: String?,
     val updatedAt: String?,
+    val profile: String? = null,
+)
+
+data class Message(
+    val id: String,
+    val role: String,
+    val content: String,
+    val timestamp: String?,
+) {
+    val fromUser: Boolean get() = role == "user"
+}
+
+data class Room(
+    val id: String,
+    val name: String,
+    val agentCount: Int,
+    val memberCount: Int,
+    val updatedAt: String?,
+)
+
+data class RoomMessage(
+    val id: String,
+    val sender: String,
+    val content: String,
+    val isAgent: Boolean,
+    val timestamp: String?,
+)
+
+data class RoomDetail(
+    val id: String,
+    val name: String,
+    val agents: List<String>,
+    val messages: List<RoomMessage>,
 )
 
 data class ChatReply(

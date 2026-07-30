@@ -7,15 +7,19 @@ Not affiliated with EKKOLearnAI.
 The Studio web UI is built for the desktop, so this app talks to the same HTTP API
 directly and renders a native, phone-shaped interface instead of wrapping a web view.
 
-## What works today (v0.1)
+## What works today (v0.2)
 
 - Sign in with your Studio server address, username and password
 - Bearer token stored in `EncryptedSharedPreferences`, backed by the Android Keystore
-- Browse profiles and pick which agent you talk to, with its current model shown
-- Chat: send a message and get the full reply, with the conversation kept in one session
-- Conversations list, tap one to continue it
+- **Your existing Studio conversations**, with the same list shape as the web sidebar:
+  title, timestamp, profile badge and model
+- **Open any conversation and read its real history** pulled from the server, then keep
+  talking in the same session
+- **All profiles filter**, matching Studio's dropdown, or scope the list to one profile
+- **Group chat tab**: rooms with agent and member counts, open a room to read its messages
+- Profiles screen to switch which agent a new chat talks to
 - Start a fresh conversation at any time
-- Dark theme, RTL-aware layout (Arabic reads correctly)
+- Studio's dark palette, RTL-aware layout (Arabic reads correctly)
 
 ## Install
 
@@ -33,6 +37,9 @@ Every push to `main` rebuilds that release, so the link always points at the new
 | Verify a stored token | `GET /api/auth/me` |
 | Profiles | `GET /api/hermes/profiles` |
 | Conversations | `GET /api/hermes/sessions?profile=…` |
+| Conversation history | `GET /api/hermes/sessions/conversations/{id}/messages` |
+| Group chat rooms | `GET /api/hermes/group-chat/rooms` |
+| Room detail and messages | `GET /api/hermes/group-chat/rooms/{id}` |
 | Send a message | `POST /api/chat-run/runs` |
 
 `POST /api/chat-run/runs` is the server's own REST wrapper around its Socket.IO chat
@@ -44,10 +51,10 @@ there is no analytics, and the app has only the `INTERNET` permission.
 
 ## Roadmap
 
+- Settings: change a profile's model and provider from the phone
+- Posting into group chat rooms, not just reading them
 - Streaming replies (Socket.IO) instead of waiting for the final answer
-- Group chat rooms
 - Push notifications for finished runs
-- Editing core settings (model, provider) from the phone
 - Kanban and scheduled jobs, read-only first
 
 ## Build locally
