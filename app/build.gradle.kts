@@ -19,8 +19,9 @@ android {
         applicationId = "us.i3u.hermesstudio"
         minSdk = 26
         targetSdk = 34
-        versionCode = 8
-        versionName = "0.7.0"
+        versionCode = 9
+        versionName = "0.7.1"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
@@ -87,4 +88,6 @@ dependencies {
     // Draws the Multiavatar SVG Studio generates for a profile without a picture.
     implementation("com.caverock:androidsvg-aar:1.4")
     debugImplementation("androidx.compose.ui:ui-tooling")
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
+    androidTestImplementation("androidx.test:runner:1.5.2")
 }

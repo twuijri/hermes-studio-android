@@ -51,6 +51,13 @@ object AppLogo {
     var hasServerCopy by mutableStateOf(false)
         private set
 
+    /** What the files on disk say; assembled off the main thread, applied on it. */
+    private data class Snapshot(
+        val image: ImageBitmap?,
+        val isCustom: Boolean,
+        val hasServerCopy: Boolean,
+    )
+
     private fun dir(context: Context) = File(context.filesDir, "branding").apply { mkdirs() }
 
     private fun customFile(context: Context) = File(dir(context), "logo-custom.png")
@@ -58,43 +65,65 @@ object AppLogo {
     private fun serverFile(context: Context) = File(dir(context), "logo-server.png")
 
     /** Reads the cached mark, so a launch shows it without waiting for the network. */
-    suspend fun load(context: Context) = withContext(Dispatchers.IO) {
-        val custom = customFile(context)
-        val server = serverFile(context)
-        hasServerCopy = server.exists()
-        isCustom = custom.exists()
-        val file = if (custom.exists()) custom else server
-        image = if (file.exists()) decode(file)?.asImageBitmap() else null
+    suspend fun load(context: Context) {
+        publish(withContext(Dispatchers.IO) { read(context) })
     }
 
     /** Pulls /logo.png from the connected Studio, at most once a week. */
-    suspend fun syncFromServer(context: Context, api: HermesApi, force: Boolean = false) = withContext(Dispatchers.IO) {
-        val server = serverFile(context)
-        val fresh = server.exists() && System.currentTimeMillis() - server.lastModified() < REFRESH_AFTER_MS
-        if (fresh && !force) return@withContext
-        val bytes = api.asset("/logo.png") ?: return@withContext
-        val bitmap = runCatching { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }.getOrNull()
-            ?: return@withContext
-        write(server, bitmap)
-        hasServerCopy = true
-        if (!isCustom) image = decode(server)?.asImageBitmap()
+    suspend fun syncFromServer(context: Context, api: HermesApi, force: Boolean = false) {
+        val next = withContext(Dispatchers.IO) {
+            val server = serverFile(context)
+            val fresh = server.exists() &&
+                System.currentTimeMillis() - server.lastModified() < REFRESH_AFTER_MS
+            if (fresh && !force) return@withContext null
+            val bytes = api.asset("/logo.png") ?: return@withContext null
+            val bitmap = decode(bytes) ?: return@withContext null
+            write(server, bitmap)
+            read(context)
+        } ?: return
+        publish(next)
     }
 
-    suspend fun setCustom(context: Context, bytes: ByteArray): Boolean = withContext(Dispatchers.IO) {
-        val bitmap = runCatching { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }.getOrNull()
-            ?: return@withContext false
-        write(customFile(context), bitmap)
-        isCustom = true
-        image = decode(customFile(context))?.asImageBitmap()
-        true
+    suspend fun setCustom(context: Context, bytes: ByteArray): Boolean {
+        val next = withContext(Dispatchers.IO) {
+            val bitmap = decode(bytes) ?: return@withContext null
+            write(customFile(context), bitmap)
+            read(context)
+        } ?: return false
+        publish(next)
+        return true
     }
 
     /** Drops the device picture and falls back to whatever the server serves. */
-    suspend fun clearCustom(context: Context) = withContext(Dispatchers.IO) {
-        customFile(context).delete()
-        isCustom = false
+    suspend fun clearCustom(context: Context) {
+        publish(
+            withContext(Dispatchers.IO) {
+                customFile(context).delete()
+                read(context)
+            },
+        )
+    }
+
+    private fun read(context: Context): Snapshot {
+        val custom = customFile(context)
         val server = serverFile(context)
-        image = if (server.exists()) decode(server)?.asImageBitmap() else null
+        val shown = if (custom.exists()) custom else server
+        return Snapshot(
+            image = if (shown.exists()) decode(shown)?.asImageBitmap() else null,
+            isCustom = custom.exists(),
+            hasServerCopy = server.exists(),
+        )
+    }
+
+    /**
+     * Compose state has to be written from the main thread: a write from a
+     * worker can land in a snapshot that was taken before the state existed,
+     * which Compose rejects outright.
+     */
+    private suspend fun publish(snapshot: Snapshot) = withContext(Dispatchers.Main) {
+        image = snapshot.image
+        isCustom = snapshot.isCustom
+        hasServerCopy = snapshot.hasServerCopy
     }
 
     private fun write(file: File, source: Bitmap) {
@@ -116,6 +145,9 @@ object AppLogo {
 
     private fun decode(file: File): Bitmap? =
         runCatching { BitmapFactory.decodeFile(file.absolutePath) }.getOrNull()
+
+    private fun decode(bytes: ByteArray): Bitmap? =
+        runCatching { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }.getOrNull()
 }
 
 /** Rounded app mark: the Studio logo once it is known, a neutral glyph before. */

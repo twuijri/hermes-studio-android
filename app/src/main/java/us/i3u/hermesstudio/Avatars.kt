@@ -86,39 +86,47 @@ object Avatars {
         val wanted = spec.fingerprintFor(profile)
         if (loaded[profile] == wanted) return
 
-        withContext(Dispatchers.IO) {
-            val dir = File(context.filesDir, "avatars").apply { mkdirs() }
-            val key = Base64.encodeToString(
-                profile.toByteArray(),
-                Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING,
-            )
-            val png = File(dir, "$key.png")
-            val stamp = File(dir, "$key.stamp")
+        val bitmap = withContext(Dispatchers.IO) { prepare(context, profile, spec, wanted) } ?: return
+        publish(profile, bitmap, wanted)
+    }
 
-            if (png.exists() && runCatching { stamp.readText() }.getOrNull() == wanted) {
-                decode(png)?.let { publish(profile, it, wanted) }
-                return@withContext
-            }
+    /** Reads the cached picture, or draws and stores a new one. Off the main thread. */
+    private fun prepare(
+        context: Context,
+        profile: String,
+        spec: AvatarSpec?,
+        wanted: String,
+    ): Bitmap? {
+        val dir = File(context.filesDir, "avatars").apply { mkdirs() }
+        val key = Base64.encodeToString(
+            profile.toByteArray(),
+            Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING,
+        )
+        val png = File(dir, "$key.png")
+        val stamp = File(dir, "$key.stamp")
 
-            // Show whatever was cached before while the new picture is prepared,
-            // so a row never blinks back to a bare placeholder.
-            if (images[profile] == null && png.exists()) {
-                decode(png)?.let { images[profile] = it.asImageBitmap() }
-            }
-
-            val bitmap = runCatching { render(context, profile, spec) }.getOrNull() ?: return@withContext
-            runCatching {
-                png.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-                stamp.writeText(wanted)
-            }
-            publish(profile, bitmap, wanted)
+        if (png.exists() && runCatching { stamp.readText() }.getOrNull() == wanted) {
+            decode(png)?.let { return it }
         }
+
+        val bitmap = runCatching { render(context, profile, spec) }.getOrNull() ?: return null
+        runCatching {
+            png.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            stamp.writeText(wanted)
+        }
+        return bitmap
     }
 
-    private fun publish(profile: String, bitmap: Bitmap, fingerprint: String) {
-        images[profile] = bitmap.asImageBitmap()
-        loaded[profile] = fingerprint
-    }
+    /**
+     * Compose state has to be written from the main thread: a write from a
+     * worker can land in a snapshot taken before the state existed, which
+     * Compose rejects outright.
+     */
+    private suspend fun publish(profile: String, bitmap: Bitmap, fingerprint: String) =
+        withContext(Dispatchers.Main) {
+            images[profile] = bitmap.asImageBitmap()
+            loaded[profile] = fingerprint
+        }
 
     private fun decode(file: File): Bitmap? =
         runCatching { BitmapFactory.decodeFile(file.absolutePath) }.getOrNull()
@@ -159,7 +167,7 @@ object Avatars {
  *
  * Avatars by Multiavatar.com — see assets/multiavatar-LICENSE.txt.
  */
-private object MultiAvatar {
+internal object MultiAvatar {
 
     private val order = listOf("env", "clo", "head", "mouth", "eyes", "top")
     private val colourPattern = Regex("#.*?;")
