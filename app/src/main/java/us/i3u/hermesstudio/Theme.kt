@@ -7,10 +7,12 @@ import androidx.compose.ui.graphics.Color
 
 /** Colours picked to match the Hermes Studio dark web UI. */
 private val StudioColors = darkColorScheme(
-    primary = Color(0xFF18A058),
-    onPrimary = Color(0xFF07120C),
-    primaryContainer = Color(0xFF17352A),
-    onPrimaryContainer = Color(0xFFD8F3E4),
+    // Studio's chrome is neutral: light controls on near-black surfaces, with no
+    // brand green anywhere.
+    primary = Color(0xFFDDE1E6),
+    onPrimary = Color(0xFF15171B),
+    primaryContainer = Color(0xFF262A31),
+    onPrimaryContainer = Color(0xFFE7E8EA),
     secondary = Color(0xFF6E7681),
     background = Color(0xFF101014),
     onBackground = Color(0xFFE7E8EA),

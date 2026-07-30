@@ -47,6 +47,10 @@ class Store(context: Context) {
         prefs.edit().putString(sessionKey(profile), sessionId).apply()
     }
 
+    var reasoningEffort: String
+        get() = prefs.getString(KEY_REASONING, "").orEmpty()
+        set(value) = prefs.edit().putString(KEY_REASONING, value).apply()
+
     fun clearCredentials() {
         prefs.edit().remove(KEY_TOKEN).apply()
     }
@@ -61,5 +65,6 @@ class Store(context: Context) {
         const val KEY_TOKEN = "token"
         const val KEY_PROFILE = "profile"
         const val KEY_SESSION_PREFIX = "session_"
+        const val KEY_REASONING = "reasoning_effort"
     }
 }

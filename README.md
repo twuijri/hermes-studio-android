@@ -7,7 +7,7 @@ Not affiliated with EKKOLearnAI.
 The Studio web UI is built for the desktop, so this app talks to the same HTTP API
 directly and renders a native, phone-shaped interface instead of wrapping a web view.
 
-## What works today (v0.3)
+## What works today (v0.4)
 
 - Sign in with your Studio server address, username and password
 - Bearer token stored in `EncryptedSharedPreferences`, backed by the Android Keystore
@@ -17,10 +17,14 @@ directly and renders a native, phone-shaped interface instead of wrapping a web 
   talking in the same session
 - **All profiles filter**, matching Studio's dropdown, or scope the list to one profile
 - **Group chat tab**: rooms with agent and member counts, open a room to read its messages
-- **Composer laid out like Telegram**: one full-width field, and a single trailing
-  button that is the microphone until you type, then becomes send
-- **Attachment sheet like WhatsApp**: tap the clip for Camera, Gallery or Document —
-  more sources slot in as extra tiles later
+- **Composer laid out like Studio's**: a full-width field with a `+` button and
+  context chips underneath, and a single trailing button that is the microphone until
+  you type, then becomes send
+- **The `+` sheet** carries everything the conversation needs: Camera, Gallery and File
+  tiles, plus the model and the reasoning effort — new controls become one more row
+- **Change the model** per conversation, applied with `POST /api/hermes/sessions/{id}/model`
+- **Change reasoning effort** (default, low, medium, high), sent as `reasoning_effort`
+  on every run, the same field the web composer sets
 - Attachments upload to your server and ride along with the message as proper
   content blocks
 - **Voice**: record, then either transcribe into the composer through your Studio
@@ -58,6 +62,8 @@ the previous version.
 | Room detail and messages | `GET /api/hermes/group-chat/rooms/{id}` |
 | Upload an attachment | `POST /upload?profile=…` |
 | Transcribe a recording | `POST /api/hermes/stt/transcribe` |
+| Available models | `GET /api/hermes/available-models?profile=…` |
+| Set a conversation's model | `POST /api/hermes/sessions/{id}/model` |
 | Send a message | `POST /api/chat-run/runs` |
 
 `POST /api/chat-run/runs` is the server's own REST wrapper around its Socket.IO chat
@@ -71,8 +77,8 @@ written to the app cache, uploaded, and deleted immediately.
 
 ## Roadmap
 
-- Reasoning view per conversation
-- Settings: change a profile's model and provider from the phone
+- Show the reasoning text a run returns, collapsed under each reply
+- Profile-level settings, not just per conversation
 - Posting into group chat rooms, not just reading them
 - Streaming replies (Socket.IO) instead of waiting for the final answer
 - Push notifications for finished runs

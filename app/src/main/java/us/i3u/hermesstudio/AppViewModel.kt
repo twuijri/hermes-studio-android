@@ -48,6 +48,11 @@ data class UiState(
     val transcribing: Boolean = false,
     /** Text produced by the last recording, consumed by the composer. */
     val transcript: String? = null,
+    val models: List<ModelOption> = emptyList(),
+    val loadingModels: Boolean = false,
+    /** Blank means the profile default, matching Studio's "Default" chip. */
+    val reasoningEffort: String = "",
+    val sessionModel: String? = null,
 )
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
@@ -56,7 +61,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val api = HermesApi(store.baseUrl, store.token)
     private val recorder = Recorder(app)
 
-    private val _state = MutableStateFlow(UiState(baseUrl = store.baseUrl))
+    private val _state = MutableStateFlow(
+        UiState(baseUrl = store.baseUrl, reasoningEffort = store.reasoningEffort),
+    )
     val state: StateFlow<UiState> = _state.asStateFlow()
 
     init {
@@ -180,6 +187,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             it.copy(
                 screen = Screen.Conversation,
                 openSession = session,
+                sessionModel = session.model,
                 lines = emptyList(),
                 loadingHistory = true,
                 error = null,
@@ -243,7 +251,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val stored = store.sessionFor(profile).ifBlank { session?.id }
             runCatching {
-                withContext(Dispatchers.IO) { api.sendMessage(profile, text, stored, files) }
+                withContext(Dispatchers.IO) {
+                    api.sendMessage(
+                        profile = profile,
+                        input = text,
+                        sessionId = stored,
+                        attachments = files,
+                        reasoningEffort = _state.value.reasoningEffort,
+                    )
+                }
             }.onSuccess { reply ->
                 reply.sessionId?.let { store.setSessionFor(profile, it) }
                 val line = if (reply.error != null && reply.output.isBlank()) {
@@ -338,6 +354,42 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun consumeTranscript() = _state.update { it.copy(transcript = null) }
+
+    // ── model and reasoning ───────────────────────────────────────────────
+
+    fun loadModels() {
+        if (_state.value.models.isNotEmpty() || _state.value.loadingModels) return
+        val profile = currentProfile()
+        _state.update { it.copy(loadingModels = true) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.availableModels(profile) } }
+                .onSuccess { models -> _state.update { it.copy(models = models, loadingModels = false) } }
+                .onFailure { failure ->
+                    _state.update { it.copy(loadingModels = false, error = failure.readableMessage()) }
+                }
+        }
+    }
+
+    /** Applies a model to the open session, or remembers it for the next one. */
+    fun selectModel(option: ModelOption) {
+        val sessionId = _state.value.openSession?.id
+            ?: store.sessionFor(currentProfile()).ifBlank { null }
+        _state.update { it.copy(sessionModel = option.id) }
+        if (sessionId == null) return
+
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) { api.setSessionModel(sessionId, option.id, option.provider) }
+            }.onFailure { failure ->
+                _state.update { it.copy(error = failure.readableMessage()) }
+            }
+        }
+    }
+
+    fun setReasoningEffort(effort: String) {
+        store.reasoningEffort = effort
+        _state.update { it.copy(reasoningEffort = effort) }
+    }
 
     // ── group room ────────────────────────────────────────────────────────
 

@@ -39,6 +39,9 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.InsertDriveFile
+import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Group
@@ -616,7 +619,7 @@ private fun Composer(
     viewModel: AppViewModel,
 ) {
     val context = LocalContext.current
-    var sheetOpen by remember { mutableStateOf(false) }
+    var sheet by remember { mutableStateOf<ComposerSheet?>(null) }
     var captureUri by remember { mutableStateOf<Uri?>(null) }
 
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -641,26 +644,74 @@ private fun Composer(
         if (granted) viewModel.startRecording()
     }
 
-    if (sheetOpen) {
-        ModalBottomSheet(
-            onDismissRequest = { sheetOpen = false },
+    when (sheet) {
+        ComposerSheet.Options -> ModalBottomSheet(
+            onDismissRequest = { sheet = null },
             sheetState = rememberModalBottomSheetState(),
         ) {
-            AttachSheet(
+            OptionsSheet(
+                state = state,
                 onCamera = {
-                    sheetOpen = false
+                    sheet = null
                     askCamera.launch(Manifest.permission.CAMERA)
                 },
                 onGallery = {
-                    sheetOpen = false
+                    sheet = null
                     pickImage.launch("image/*")
                 },
                 onDocument = {
-                    sheetOpen = false
+                    sheet = null
                     pickFile.launch("*/*")
+                },
+                onModel = {
+                    viewModel.loadModels()
+                    sheet = ComposerSheet.Model
+                },
+                onReasoning = { sheet = ComposerSheet.Reasoning },
+            )
+        }
+
+        ComposerSheet.Model -> ModalBottomSheet(
+            onDismissRequest = { sheet = null },
+            sheetState = rememberModalBottomSheetState(),
+        ) {
+            PickerSheet(
+                title = "Model",
+                loading = state.loadingModels,
+                rows = state.models.map { option ->
+                    PickerRow(
+                        label = option.id,
+                        detail = option.provider,
+                        selected = option.id == state.sessionModel,
+                    ) {
+                        viewModel.selectModel(option)
+                        sheet = null
+                    }
                 },
             )
         }
+
+        ComposerSheet.Reasoning -> ModalBottomSheet(
+            onDismissRequest = { sheet = null },
+            sheetState = rememberModalBottomSheetState(),
+        ) {
+            PickerSheet(
+                title = "Reasoning effort",
+                loading = false,
+                rows = REASONING_LEVELS.map { (value, label) ->
+                    PickerRow(
+                        label = label,
+                        detail = if (value.isBlank()) "Use the profile default" else null,
+                        selected = value == state.reasoningEffort,
+                    ) {
+                        viewModel.setReasoningEffort(value)
+                        sheet = null
+                    }
+                },
+            )
+        }
+
+        null -> Unit
     }
 
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -676,9 +727,7 @@ private fun Composer(
                         trailingIcon = { Icon(Icons.Filled.Close, contentDescription = "Remove") },
                     )
                 }
-                if (state.attaching) {
-                    AssistChip(onClick = {}, label = { Text("Uploading…") })
-                }
+                if (state.attaching) AssistChip(onClick = {}, label = { Text("Uploading…") })
             }
         }
 
@@ -702,86 +751,263 @@ private fun Composer(
         }
 
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
             verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             OutlinedTextField(
                 value = draft,
                 onValueChange = onDraftChange,
-                placeholder = { Text("Message") },
+                placeholder = { Text("Type a message…") },
                 modifier = Modifier.weight(1f),
                 maxLines = 5,
-                shape = RoundedCornerShape(22.dp),
-                trailingIcon = {
-                    IconButton(onClick = { sheetOpen = true }, enabled = !state.sending) {
-                        Icon(Icons.Filled.AttachFile, contentDescription = "Attach")
-                    }
-                },
+                shape = RoundedCornerShape(20.dp),
             )
+            SendOrRecordButton(state, draft, onSend, viewModel) {
+                askMic.launch(Manifest.permission.RECORD_AUDIO)
+            }
+        }
 
-            // One trailing action, like Telegram: microphone until there is
-            // something to send, then the send arrow.
-            val hasPayload = draft.isNotBlank() || state.attachments.isNotEmpty()
+        // Studio keeps its context controls on a row under the field.
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 2.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
             Box(
                 modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(MaterialTheme.colorScheme.primary),
+                    .size(32.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .clickable(enabled = !state.sending) { sheet = ComposerSheet.Options },
                 contentAlignment = Alignment.Center,
             ) {
-                when {
-                    state.recording -> IconButton(onClick = { viewModel.stopRecordingAndTranscribe() }) {
-                        Icon(
-                            Icons.Filled.Stop,
-                            contentDescription = "Stop and transcribe",
-                            tint = MaterialTheme.colorScheme.onPrimary,
+                Icon(
+                    Icons.Filled.Add,
+                    contentDescription = "More options",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            ToolbarChip(
+                icon = Icons.Filled.Psychology,
+                label = REASONING_LEVELS.firstOrNull { it.first == state.reasoningEffort }?.second ?: "Default",
+            ) {
+                sheet = ComposerSheet.Reasoning
+            }
+            ToolbarChip(
+                icon = Icons.Filled.WbSunny,
+                label = state.sessionModel ?: "Model",
+            ) {
+                viewModel.loadModels()
+                sheet = ComposerSheet.Model
+            }
+        }
+    }
+}
+
+private enum class ComposerSheet { Options, Model, Reasoning }
+
+private val REASONING_LEVELS = listOf(
+    "" to "Default",
+    "low" to "Low",
+    "medium" to "Medium",
+    "high" to "High",
+)
+
+@Composable
+private fun SendOrRecordButton(
+    state: UiState,
+    draft: String,
+    onSend: () -> Unit,
+    viewModel: AppViewModel,
+    onRecord: () -> Unit,
+) {
+    val hasPayload = draft.isNotBlank() || state.attachments.isNotEmpty()
+    val background = if (hasPayload || state.recording) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant
+    }
+    val tint = if (hasPayload || state.recording) {
+        MaterialTheme.colorScheme.onPrimary
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+
+    Box(
+        modifier = Modifier
+            .padding(bottom = 4.dp)
+            .size(46.dp)
+            .clip(RoundedCornerShape(23.dp))
+            .background(background),
+        contentAlignment = Alignment.Center,
+    ) {
+        when {
+            state.recording -> IconButton(onClick = { viewModel.stopRecordingAndTranscribe() }) {
+                Icon(Icons.Filled.Stop, contentDescription = "Stop and transcribe", tint = tint)
+            }
+            hasPayload -> IconButton(onClick = onSend, enabled = !state.sending) {
+                Icon(Icons.Filled.Send, contentDescription = "Send", tint = tint)
+            }
+            else -> IconButton(onClick = onRecord, enabled = !state.transcribing) {
+                Icon(Icons.Filled.Mic, contentDescription = "Record voice", tint = tint)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ToolbarChip(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(15.dp),
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 150.dp),
+        )
+        Text("⌄", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** The "+" sheet: attachments first, then the per-conversation controls. */
+@Composable
+private fun OptionsSheet(
+    state: UiState,
+    onCamera: () -> Unit,
+    onGallery: () -> Unit,
+    onDocument: () -> Unit,
+    onModel: () -> Unit,
+    onReasoning: () -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 28.dp)) {
+        SheetTitle("Add")
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+        ) {
+            AttachOption(Icons.Filled.PhotoCamera, "Camera", onCamera)
+            AttachOption(Icons.Filled.Image, "Gallery", onGallery)
+            AttachOption(Icons.Filled.InsertDriveFile, "File", onDocument)
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+        SheetTitle("Conversation")
+        SheetRow(
+            icon = Icons.Filled.WbSunny,
+            label = "Model",
+            detail = state.sessionModel ?: "profile default",
+            onClick = onModel,
+        )
+        SheetRow(
+            icon = Icons.Filled.Psychology,
+            label = "Reasoning effort",
+            detail = REASONING_LEVELS.firstOrNull { it.first == state.reasoningEffort }?.second ?: "Default",
+            onClick = onReasoning,
+        )
+    }
+}
+
+private data class PickerRow(
+    val label: String,
+    val detail: String?,
+    val selected: Boolean,
+    val onClick: () -> Unit,
+)
+
+@Composable
+private fun PickerSheet(title: String, loading: Boolean, rows: List<PickerRow>) {
+    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 28.dp)) {
+        SheetTitle(title)
+        if (loading) LoadingRow()
+        if (!loading && rows.isEmpty()) {
+            Text(
+                "Nothing available",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+            )
+        }
+        rows.forEach { row ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = row.onClick)
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(row.label, style = MaterialTheme.typography.bodyLarge)
+                    row.detail?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    hasPayload -> IconButton(onClick = onSend, enabled = !state.sending) {
-                        Icon(
-                            Icons.Filled.Send,
-                            contentDescription = "Send",
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                        )
-                    }
-                    else -> IconButton(
-                        onClick = { askMic.launch(Manifest.permission.RECORD_AUDIO) },
-                        enabled = !state.transcribing,
-                    ) {
-                        Icon(
-                            Icons.Filled.Mic,
-                            contentDescription = "Record voice",
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                        )
-                    }
+                }
+                if (row.selected) {
+                    Icon(Icons.Filled.Check, contentDescription = "Selected")
                 }
             }
         }
     }
 }
 
-/** WhatsApp-style attachment options; new sources slot in as extra tiles. */
 @Composable
-private fun AttachSheet(
-    onCamera: () -> Unit,
-    onGallery: () -> Unit,
-    onDocument: () -> Unit,
+private fun SheetTitle(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+    )
+}
+
+@Composable
+private fun SheetRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    detail: String,
+    onClick: () -> Unit,
 ) {
-    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 28.dp)) {
-        Text(
-            "Attach",
-            style = MaterialTheme.typography.titleSmall,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-        ) {
-            AttachOption(Icons.Filled.PhotoCamera, "Camera", onCamera)
-            AttachOption(Icons.Filled.Image, "Gallery", onGallery)
-            AttachOption(Icons.Filled.InsertDriveFile, "Document", onDocument)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(modifier = Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                detail,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
+        Text("›", color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -798,12 +1024,12 @@ private fun AttachOption(
     ) {
         Box(
             modifier = Modifier
-                .size(56.dp)
-                .clip(RoundedCornerShape(28.dp))
+                .size(54.dp)
+                .clip(RoundedCornerShape(27.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(icon, contentDescription = label, tint = MaterialTheme.colorScheme.primary)
+            Icon(icon, contentDescription = label, tint = MaterialTheme.colorScheme.onSurface)
         }
         Text(label, style = MaterialTheme.typography.labelMedium)
     }

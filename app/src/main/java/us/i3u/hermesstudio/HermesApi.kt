@@ -112,6 +112,41 @@ class HermesApi(
         }
     }
 
+    /** GET /api/hermes/available-models — flattened to what the picker needs. */
+    fun availableModels(profile: String): List<ModelOption> {
+        val result = call("/api/hermes/available-models?profile=${enc(profile)}")
+        val options = LinkedHashMap<String, ModelOption>()
+
+        fun collect(container: JSONObject) {
+            val provider = firstNonBlank(container, "provider", "name", "label") ?: return
+            val models = container.optJSONArray("models") ?: return
+            for (index in 0 until models.length()) {
+                val id = models.optString(index).takeIf { it.isNotBlank() }
+                    ?: models.optJSONObject(index)?.let { firstNonBlank(it, "id", "name", "model") }
+                    ?: continue
+                if (id == "*") continue
+                options.putIfAbsent(id, ModelOption(id = id, provider = provider))
+            }
+        }
+
+        result.optJSONArray("groups")?.let { groups ->
+            for (index in 0 until groups.length()) groups.optJSONObject(index)?.let(::collect)
+        }
+        if (options.isEmpty()) {
+            result.optJSONArray("allProviders")?.let { providers ->
+                for (index in 0 until providers.length()) providers.optJSONObject(index)?.let(::collect)
+            }
+        }
+        return options.values.toList()
+    }
+
+    /** POST /api/hermes/sessions/{id}/model */
+    fun setSessionModel(sessionId: String, model: String, provider: String?) {
+        val body = JSONObject().put("model", model)
+        if (!provider.isNullOrBlank()) body.put("provider", provider)
+        call("/api/hermes/sessions/${enc(sessionId)}/model", "POST", body)
+    }
+
     /** GET /api/hermes/sessions/conversations/{id}/messages — existing history. */
     fun messages(sessionId: String, humanOnly: Boolean = true): List<Message> {
         val path = "/api/hermes/sessions/conversations/${enc(sessionId)}/messages?humanOnly=$humanOnly"
@@ -225,6 +260,7 @@ class HermesApi(
         input: String,
         sessionId: String?,
         attachments: List<Upload> = emptyList(),
+        reasoningEffort: String? = null,
     ): ChatReply {
         // Studio sends either a plain string or an array of content blocks; the
         // block form is what carries images and files.
@@ -252,6 +288,7 @@ class HermesApi(
             .put("profile", profile)
             .put("timeout_ms", 240_000)
         if (!sessionId.isNullOrBlank()) body.put("session_id", sessionId)
+        if (!reasoningEffort.isNullOrBlank()) body.put("reasoning_effort", reasoningEffort)
 
         val result = call("/api/chat-run/runs", "POST", body)
         val failure = result.optString("error").takeIf { it.isNotBlank() }
@@ -290,6 +327,11 @@ data class SessionSummary(
     val model: String?,
     val updatedAt: String?,
     val profile: String? = null,
+)
+
+data class ModelOption(
+    val id: String,
+    val provider: String,
 )
 
 data class Upload(
