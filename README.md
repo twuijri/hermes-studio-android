@@ -25,13 +25,11 @@ directly and renders a native, phone-shaped interface instead of wrapping a web 
   a room, settings, the groups tab — and only closes the app from the chat list
 - **Confirmation before anything you cannot undo**: signing out and restarting a
   profile's gateway both ask first, naming the profile that will stop answering
-- **Arabic, with the interface mirrored** — every screen is translated, the layout
-  flips for a right-to-left language, and the icons that mean a direction (back,
-  send) flip with it. Pick a language in Settings, or before you even sign in, from
-  the globe on the first screen
-- **A translation structure built for more languages**: one file of strings, one line
-  to offer it, and a test that fails the build on a missing key or a broken
-  placeholder — see [docs/adding-a-language.md](docs/adding-a-language.md)
+- **Ready for other languages**: every string lives in one file, adding a language is
+  a copy plus two lines, and a test fails the build on a missing key or a broken
+  placeholder. Right-to-left layouts are handled too, mirrored icons included, and the
+  language is picked in Settings or before signing in — see
+  [docs/adding-a-language.md](docs/adding-a-language.md)
 - **The same profile pictures Studio shows**: an uploaded avatar, or the Multiavatar
   generated from the profile name — rendered on the device and cached, so a launch
   draws them from disk instead of pulling them again
@@ -71,9 +69,8 @@ directly and renders a native, phone-shaped interface instead of wrapping a web 
 
 | | |
 | --- | --- |
-| ![First run in Arabic](docs/screenshots/onboarding-ar.png) | ![Sign in, in Arabic](docs/screenshots/login-ar.png) |
-| ![Conversations, in Arabic](docs/screenshots/chats-ar.png) | ![A conversation, in Arabic](docs/screenshots/conversation-ar.png) |
-| ![A reply streaming in](docs/screenshots/streaming-ar.png) | ![A group room](docs/screenshots/room-ar.png) |
+| ![Your conversations](docs/screenshots/chats.png) | ![A reply streaming in](docs/screenshots/streaming.png) |
+| ![A group room](docs/screenshots/room.png) | ![First run](docs/screenshots/onboarding.png) |
 
 ## Install
 
