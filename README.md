@@ -19,6 +19,10 @@ directly and renders a native, phone-shaped interface instead of wrapping a web 
 - **Manage profiles**: create, rename and delete them from the profiles screen
 - **Group chat is writable**: create a room, choose which agents are in it, post
   into it over the room socket and watch replies arrive, or delete the room
+- **Agent tools have their own bottom tab**, beside Chats and Groups. Jobs,
+  Kanban, Channels, Skills, Plugins, MCP, Pets, Memory and Models now have one
+  predictable home; the tools already native to the app stay native, while the
+  remaining Studio-only tools open their exact page in the browser
 - **Channels are set up from the app**, on their own screen: enter a bot token (or
   the app id, secret and the rest — each channel asks for exactly the fields the
   server maps), turn a channel on or off, or remove its credentials. Saving writes
@@ -28,17 +32,19 @@ directly and renders a native, phone-shaped interface instead of wrapping a web 
   limit; pause or resume it, run it immediately, delete it, and read its run output.
   Every call uses the same profile-scoped endpoints and `X-Hermes-Profile` header
   as Studio.
-- **Studio settings are native mobile screens**, not one long wall: account security
-  and IP locks; super-admin user management; model-provider keys; agent and gateway
-  start policy; memory; context compression; session reset and write approvals;
-  privacy redaction; proxy; and Studio display preferences. Every value is read from
-  and saved to the active profile through the same config contracts as the web UI
+- **Settings no longer contains another confusing settings menu**: the main page
+  carries device preferences and About, while one clearly named **More settings**
+  entry contains account security, IP locks, super-admin user management, context
+  compression, session reset and approvals, privacy, proxy, and Studio display.
+  Agent-specific configuration lives in the Agent tab. Every native value is read
+  from and saved to the active profile through the same contracts as the web UI
 - **Agent settings**: max turns, gateway timeout, restart drain timeout, tool
   enforcement, and **gateway auto-start where Studio keeps it** — including the
   profile policy, so a server with several profiles can start only the ones that
   actually answer on a channel
 - **The system back button behaves**: it walks back through the app — a conversation,
-  a room, settings, the groups tab — and only closes the app from the chat list
+  a room, an Agent tool, More settings, settings, or the groups tab — and only
+  closes the app from the chat list
 - **Confirmation before anything you cannot undo**: signing out and restarting a
   profile's gateway both ask first, naming the profile that will stop answering
 - **Ready for other languages**: every string lives in one file, adding a language is
@@ -50,7 +56,7 @@ directly and renders a native, phone-shaped interface instead of wrapping a web 
   generated from the profile name — rendered on the device and cached, so a launch
   draws them from disk instead of pulling them again
 - **Your Studio logo as the app mark**, fetched from your own server (`/logo.png`) and
-  cached; swap it for any picture on your phone from Settings → Appearance
+  cached; swap it for any picture on your phone from Settings → This device
 - **First-run walkthrough** explaining what the app is and that you supply the
   Hermes Studio server yourself
 - **Splash while the stored session is verified** — the sign-in form only appears when

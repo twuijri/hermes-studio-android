@@ -12,8 +12,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 enum class Screen {
-    Loading, Onboarding, Login, Chats, Groups, Conversation, Room, Profiles,
-    Settings, SettingsGroup, Channels, Channel, CronJobs, CronJob, CronHistory,
+    Loading, Onboarding, Login, Chats, Groups, AgentHub, Conversation, Room, Profiles,
+    Settings, MoreSettings, SettingsGroup, Channels, Channel, CronJobs, CronJob, CronHistory,
 }
 
 /** Settings is a short list of these; each opens its own screen. */
@@ -22,8 +22,8 @@ enum class SettingsGroup {
     Privacy, Proxy, Display, Device, About,
 }
 
-/** The two list tabs, mirroring Studio's chat / group-chat switch. */
-enum class Tab { Chats, Groups }
+/** The app's three root destinations. Agent tools live outside Settings. */
+enum class Tab { Chats, Groups, Agent }
 
 private data class SessionBootstrap(
     val user: CurrentUser,
@@ -94,6 +94,8 @@ data class UiState(
     /** The channel whose settings are open, if any. */
     val openChannel: String? = null,
     val openGroup: SettingsGroup? = null,
+    /** Parent hub for a settings group, channel list, or scheduled-jobs list. */
+    val toolReturnScreen: Screen = Screen.Settings,
     val agentSettings: AgentSettings? = null,
     val autoStart: AutoStartPolicy? = null,
     val loadingAgentSettings: Boolean = false,
@@ -278,6 +280,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             Tab.Groups -> {
                 _state.update { it.copy(screen = Screen.Groups) }
                 if (_state.value.rooms.isEmpty()) refreshRooms()
+            }
+            Tab.Agent -> {
+                _state.update { it.copy(screen = Screen.AgentHub) }
+                refreshServerConfig()
+                if (_state.value.cronJobs.isEmpty()) refreshCronJobs()
             }
         }
     }
@@ -960,6 +967,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             it.copy(
                 screen = Screen.SettingsGroup,
                 openGroup = group,
+                toolReturnScreen = when (it.screen) {
+                    Screen.AgentHub -> Screen.AgentHub
+                    Screen.MoreSettings -> Screen.MoreSettings
+                    else -> Screen.Settings
+                },
                 error = null,
                 notice = null,
                 loadingAgentSettings = group == SettingsGroup.Agent,
@@ -1261,6 +1273,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _state.update {
             it.copy(
                 screen = Screen.CronJobs,
+                toolReturnScreen = when (it.screen) {
+                    Screen.AgentHub -> Screen.AgentHub
+                    Screen.MoreSettings -> Screen.MoreSettings
+                    else -> Screen.Settings
+                },
                 error = null,
                 notice = null,
                 editingCronJob = null,
@@ -1509,7 +1526,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // ── channels ──────────────────────────────────────────────────────────
 
     fun openChannels() {
-        _state.update { it.copy(screen = Screen.Channels, error = null, notice = null) }
+        _state.update {
+            it.copy(
+                screen = Screen.Channels,
+                toolReturnScreen = when (it.screen) {
+                    Screen.AgentHub -> Screen.AgentHub
+                    Screen.MoreSettings -> Screen.MoreSettings
+                    else -> Screen.Settings
+                },
+                error = null,
+                notice = null,
+            )
+        }
         refreshServerConfig()
     }
 
@@ -1517,6 +1545,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun openSettings() {
         _state.update { it.copy(screen = Screen.Settings, error = null, notice = null, openGroup = null) }
         refreshServerConfig()
+    }
+
+    fun openMoreSettings() {
+        _state.update { it.copy(screen = Screen.MoreSettings, error = null, notice = null, openGroup = null) }
     }
 
     fun openChannel(platform: String) {
@@ -1679,8 +1711,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val target = when (state.screen) {
                 Screen.Channel -> Screen.Channels
                 Screen.CronJob, Screen.CronHistory -> Screen.CronJobs
-                Screen.Channels, Screen.SettingsGroup, Screen.CronJobs -> Screen.Settings
-                else -> if (state.tab == Tab.Groups) Screen.Groups else Screen.Chats
+                Screen.Channels, Screen.SettingsGroup, Screen.CronJobs -> state.toolReturnScreen
+                Screen.MoreSettings -> Screen.Settings
+                else -> when (state.tab) {
+                    Tab.Groups -> Screen.Groups
+                    Tab.Agent -> Screen.AgentHub
+                    Tab.Chats -> Screen.Chats
+                }
             }
             state.copy(
                 screen = target,

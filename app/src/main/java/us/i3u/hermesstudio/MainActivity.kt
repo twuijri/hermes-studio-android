@@ -3,6 +3,7 @@ package us.i3u.hermesstudio
 import android.Manifest
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
@@ -39,8 +40,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -65,6 +68,11 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.Pets
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.ViewKanban
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -144,10 +152,10 @@ private fun App(viewModel: AppViewModel = viewModel()) {
     // back to. Only the two root lists let it fall through and close the app.
     when (state.screen) {
         Screen.Conversation, Screen.Room, Screen.Profiles, Screen.Settings,
-        Screen.SettingsGroup, Screen.Channels, Screen.Channel, Screen.CronJobs,
+        Screen.MoreSettings, Screen.SettingsGroup, Screen.Channels, Screen.Channel, Screen.CronJobs,
         Screen.CronJob, Screen.CronHistory,
         -> BackHandler { viewModel.back() }
-        Screen.Groups -> BackHandler { viewModel.showTab(Tab.Chats) }
+        Screen.Groups, Screen.AgentHub -> BackHandler { viewModel.showTab(Tab.Chats) }
         else -> Unit
     }
 
@@ -164,6 +172,7 @@ private fun App(viewModel: AppViewModel = viewModel()) {
             onDone = { viewModel.finishOnboarding() },
         )
         Screen.Settings -> SettingsScreen(state, viewModel)
+        Screen.MoreSettings -> MoreSettingsScreen(state, viewModel)
         Screen.SettingsGroup -> SettingsGroupScreen(state, viewModel)
         Screen.Channels -> ChannelsScreen(state, viewModel)
         Screen.Channel -> ChannelScreen(state, viewModel)
@@ -173,6 +182,7 @@ private fun App(viewModel: AppViewModel = viewModel()) {
         Screen.Login -> LoginScreen(state, viewModel)
         Screen.Chats -> ChatsScreen(state, viewModel)
         Screen.Groups -> GroupsScreen(state, viewModel)
+        Screen.AgentHub -> AgentHubScreen(state, viewModel)
         Screen.Conversation -> ConversationScreen(state, viewModel)
         Screen.Room -> RoomScreen(state, viewModel)
         Screen.Profiles -> ProfilesScreen(state, viewModel)
@@ -1421,7 +1431,11 @@ private fun SheetRow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        Text("›", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Icon(
+            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -1619,23 +1633,178 @@ private fun LanguageAction(state: UiState, viewModel: AppViewModel) {
     }
 }
 
-/**
- * Settings is a table of contents, not a wall.
- *
- * Studio groups its own settings into tabs; a phone has no room for eleven
- * tabs, so each group opens its own screen and this list stays short enough to
- * take in at a glance.
- */
+/** Agent work gets a first-class home instead of masquerading as app settings. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AgentHubScreen(state: UiState, viewModel: AppViewModel) {
+    val context = LocalContext.current
+    val channels = state.serverConfig?.channels.orEmpty()
+    val openStudioTool: (String) -> Unit = { route ->
+        val url = "${state.baseUrl.trimEnd('/')}/#/hermes/$route"
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+    }
+
+    Scaffold(
+        topBar = {
+            StudioTopBar(
+                title = stringResource(R.string.agent_hub_title),
+                subtitle = state.activeProfile.takeIf { it.isNotBlank() }?.let {
+                    stringResource(R.string.agent_hub_profile, it)
+                },
+                leading = { AppMark(size = 30.dp, corner = 9.dp) },
+                actions = {
+                    IconButton(onClick = { viewModel.openSettings() }) {
+                        Icon(Icons.Filled.Settings, contentDescription = stringResource(R.string.action_settings))
+                    }
+                },
+            )
+        },
+        bottomBar = { StudioTabs(state, viewModel) },
+    ) { padding ->
+        Column(
+            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()),
+        ) {
+            state.error?.let { ErrorNote(it) { viewModel.dismissError() } }
+            state.notice?.let { NoticeNote(it) { viewModel.dismissNotice() } }
+
+            SettingsSection(stringResource(R.string.agent_hub_tools))
+            SettingsRow(
+                icon = Icons.Filled.Schedule,
+                label = stringResource(R.string.cron_title),
+                value = stringResource(R.string.settings_group_cron_note),
+                onClick = { viewModel.openCronJobs() },
+            )
+            SettingsRow(
+                icon = Icons.Filled.ViewKanban,
+                label = stringResource(R.string.agent_hub_kanban),
+                value = stringResource(R.string.agent_hub_studio_tool_note),
+                onClick = { openStudioTool("kanban") },
+                trailing = { Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null) },
+            )
+            SettingsRow(
+                icon = Icons.Filled.Hub,
+                label = stringResource(R.string.settings_channels),
+                value = if (channels.isEmpty()) {
+                    stringResource(R.string.settings_group_channels_note)
+                } else {
+                    stringResource(
+                        R.string.settings_channels_summary,
+                        channels.count { it.configured },
+                        channels.size.coerceAtLeast(CHANNELS.size),
+                    )
+                },
+                onClick = { viewModel.openChannels() },
+            )
+            SettingsRow(
+                icon = Icons.Filled.School,
+                label = stringResource(R.string.agent_hub_skills),
+                value = stringResource(R.string.agent_hub_studio_tool_note),
+                onClick = { openStudioTool("skills") },
+                trailing = { Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null) },
+            )
+            SettingsRow(
+                icon = Icons.Filled.Extension,
+                label = stringResource(R.string.agent_hub_plugins),
+                value = stringResource(R.string.agent_hub_studio_tool_note),
+                onClick = { openStudioTool("plugins") },
+                trailing = { Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null) },
+            )
+            SettingsRow(
+                icon = Icons.Filled.Dns,
+                label = stringResource(R.string.agent_hub_mcp),
+                value = stringResource(R.string.agent_hub_studio_tool_note),
+                onClick = { openStudioTool("mcp") },
+                trailing = { Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null) },
+            )
+            SettingsRow(
+                icon = Icons.Filled.Pets,
+                label = stringResource(R.string.agent_hub_pets),
+                value = stringResource(R.string.agent_hub_studio_tool_note),
+                onClick = { openStudioTool("petdex") },
+                trailing = { Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null) },
+            )
+            SettingsRow(
+                icon = Icons.Filled.Psychology,
+                label = stringResource(R.string.settings_group_memory),
+                value = stringResource(R.string.settings_group_memory_note),
+                onClick = { viewModel.openSettingsGroup(SettingsGroup.Memory) },
+            )
+            SettingsRow(
+                icon = Icons.Filled.WbSunny,
+                label = stringResource(R.string.settings_group_models),
+                value = stringResource(R.string.settings_group_models_note),
+                onClick = { viewModel.openSettingsGroup(SettingsGroup.Models) },
+            )
+
+            SettingsSection(stringResource(R.string.agent_hub_configuration))
+            SettingsRow(
+                icon = Icons.Filled.Person,
+                label = stringResource(R.string.settings_group_profile),
+                value = state.activeProfile.ifBlank { stringResource(R.string.settings_group_profile_note) },
+                onClick = { viewModel.openSettingsGroup(SettingsGroup.Profile) },
+            )
+            SettingsRow(
+                icon = Icons.Filled.Tune,
+                label = stringResource(R.string.settings_group_agent),
+                value = stringResource(R.string.settings_group_agent_note),
+                onClick = { viewModel.openSettingsGroup(SettingsGroup.Agent) },
+            )
+        }
+    }
+}
+
+/** App settings stay intentionally small; Studio's long list has one doorway. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
-    val channels = state.serverConfig?.channels.orEmpty()
-
     Scaffold(
         topBar = {
             StudioTopBar(
                 title = stringResource(R.string.settings_title),
                 subtitle = state.account?.let { stringResource(R.string.profiles_signed_in, it) },
+                onBack = { viewModel.back() },
+            )
+        },
+    ) { padding ->
+        Column(
+            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()),
+        ) {
+            state.error?.let { ErrorNote(it) { viewModel.dismissError() } }
+            state.notice?.let { NoticeNote(it) { viewModel.dismissNotice() } }
+
+            SettingsRow(
+                icon = Icons.Filled.Settings,
+                label = stringResource(R.string.more_settings_title),
+                value = stringResource(R.string.more_settings_note),
+                onClick = { viewModel.openMoreSettings() },
+            )
+
+            SettingsSection(stringResource(R.string.settings_category_app))
+            SettingsRow(
+                icon = Icons.Filled.Language,
+                label = stringResource(R.string.settings_group_device),
+                value = stringResource(R.string.settings_group_device_note),
+                onClick = { viewModel.openSettingsGroup(SettingsGroup.Device) },
+            )
+            SettingsRow(
+                icon = Icons.AutoMirrored.Filled.Chat,
+                label = stringResource(R.string.settings_section_about),
+                value = stringResource(R.string.settings_group_about_note),
+                onClick = { viewModel.openSettingsGroup(SettingsGroup.About) },
+            )
+        }
+    }
+}
+
+/** The non-agent Studio settings, grouped behind one clearly named entry. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MoreSettingsScreen(state: UiState, viewModel: AppViewModel) {
+    Scaffold(
+        topBar = {
+            StudioTopBar(
+                title = stringResource(R.string.more_settings_title),
+                subtitle = stringResource(R.string.more_settings_subtitle),
                 onBack = { viewModel.back() },
             )
         },
@@ -1662,31 +1831,7 @@ private fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
                 )
             }
 
-            SettingsSection(stringResource(R.string.settings_category_profile))
-            SettingsRow(
-                icon = Icons.Filled.Person,
-                label = stringResource(R.string.settings_group_profile),
-                value = state.activeProfile.ifBlank { stringResource(R.string.settings_group_profile_note) },
-                onClick = { viewModel.openSettingsGroup(SettingsGroup.Profile) },
-            )
-            SettingsRow(
-                icon = Icons.Filled.WbSunny,
-                label = stringResource(R.string.settings_group_models),
-                value = stringResource(R.string.settings_group_models_note),
-                onClick = { viewModel.openSettingsGroup(SettingsGroup.Models) },
-            )
-            SettingsRow(
-                icon = Icons.Filled.Psychology,
-                label = stringResource(R.string.settings_group_agent),
-                value = stringResource(R.string.settings_group_agent_note),
-                onClick = { viewModel.openSettingsGroup(SettingsGroup.Agent) },
-            )
-            SettingsRow(
-                icon = Icons.Filled.Psychology,
-                label = stringResource(R.string.settings_group_memory),
-                value = stringResource(R.string.settings_group_memory_note),
-                onClick = { viewModel.openSettingsGroup(SettingsGroup.Memory) },
-            )
+            SettingsSection(stringResource(R.string.more_settings_studio))
             SettingsRow(
                 icon = Icons.Filled.RestartAlt,
                 label = stringResource(R.string.settings_group_compression),
@@ -1705,53 +1850,17 @@ private fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
                 value = stringResource(R.string.settings_group_privacy_note),
                 onClick = { viewModel.openSettingsGroup(SettingsGroup.Privacy) },
             )
-
-            SettingsSection(stringResource(R.string.settings_category_integrations))
-            SettingsRow(
-                icon = Icons.Filled.Hub,
-                label = stringResource(R.string.settings_channels),
-                value = if (channels.isEmpty()) {
-                    stringResource(R.string.settings_group_channels_note)
-                } else {
-                    stringResource(
-                        R.string.settings_channels_summary,
-                        channels.count { it.configured },
-                        channels.size.coerceAtLeast(CHANNELS.size),
-                    )
-                },
-                onClick = { viewModel.openChannels() },
-            )
-            SettingsRow(
-                icon = Icons.Filled.Schedule,
-                label = stringResource(R.string.cron_title),
-                value = stringResource(R.string.settings_group_cron_note),
-                onClick = { viewModel.openCronJobs() },
-            )
             SettingsRow(
                 icon = Icons.Filled.Dns,
                 label = stringResource(R.string.settings_group_proxy),
                 value = stringResource(R.string.settings_group_proxy_note),
                 onClick = { viewModel.openSettingsGroup(SettingsGroup.Proxy) },
             )
-
-            SettingsSection(stringResource(R.string.settings_category_app))
             SettingsRow(
                 icon = Icons.Filled.Settings,
                 label = stringResource(R.string.settings_group_display),
                 value = stringResource(R.string.settings_group_display_note),
                 onClick = { viewModel.openSettingsGroup(SettingsGroup.Display) },
-            )
-            SettingsRow(
-                icon = Icons.Filled.Language,
-                label = stringResource(R.string.settings_group_device),
-                value = stringResource(R.string.settings_group_device_note),
-                onClick = { viewModel.openSettingsGroup(SettingsGroup.Device) },
-            )
-            SettingsRow(
-                icon = Icons.AutoMirrored.Filled.Chat,
-                label = stringResource(R.string.settings_section_about),
-                value = stringResource(R.string.settings_group_about_note),
-                onClick = { viewModel.openSettingsGroup(SettingsGroup.About) },
             )
         }
     }
@@ -2400,7 +2509,11 @@ internal fun SettingsRow(
         }
         when {
             trailing != null -> trailing()
-            onClick != null -> Text("›", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            onClick != null -> Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
     HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
@@ -2428,7 +2541,11 @@ private fun LogoRow(value: String, onClick: () -> Unit) {
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        Text("›", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Icon(
+            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
     HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
 }
@@ -2506,6 +2623,12 @@ private fun StudioTabs(state: UiState, viewModel: AppViewModel) {
             onClick = { viewModel.showTab(Tab.Groups) },
             icon = { Icon(Icons.Filled.Group, contentDescription = null) },
             label = { Text(stringResource(R.string.groups_tab)) },
+        )
+        NavigationBarItem(
+            selected = state.tab == Tab.Agent,
+            onClick = { viewModel.showTab(Tab.Agent) },
+            icon = { Icon(Icons.Filled.Psychology, contentDescription = null) },
+            label = { Text(stringResource(R.string.agent_hub_tab)) },
         )
     }
 }

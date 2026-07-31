@@ -62,6 +62,19 @@
     <string name="room_title">غرفة</string>
     <string name="room_empty">لا توجد رسائل في هذه الغرفة بعد</string>
 
+    <!-- مركز الوكيل -->
+    <string name="agent_hub_title">الوكيل</string>
+    <string name="agent_hub_tab">الوكيل</string>
+    <string name="agent_hub_profile">البروفايل النشط: %1$s</string>
+    <string name="agent_hub_tools">أدوات الوكيل</string>
+    <string name="agent_hub_configuration">إعداد الوكيل</string>
+    <string name="agent_hub_kanban">كانبان</string>
+    <string name="agent_hub_skills">المهارات</string>
+    <string name="agent_hub_plugins">الإضافات</string>
+    <string name="agent_hub_mcp">MCP</string>
+    <string name="agent_hub_pets">الحيوانات المرافقة</string>
+    <string name="agent_hub_studio_tool_note">يفتح هذه الأداة في الاستديو عبر المتصفح</string>
+
     <!-- المحادثة -->
     <string name="conversation_empty">أرسل رسالة إلى %1$s</string>
     <string name="run_requires_approval">هذا التشغيل ينتظر موافقة. افتح الاستديو للرد.</string>
@@ -107,6 +120,10 @@
 
     <!-- الإعدادات -->
     <string name="settings_title">الإعدادات</string>
+    <string name="more_settings_title">إعدادات إضافية</string>
+    <string name="more_settings_note">الحساب والأمان والعرض والبروكسي والجلسات والخصوصية</string>
+    <string name="more_settings_subtitle">إعدادات الاستديو والحساب</string>
+    <string name="more_settings_studio">سلوك الاستديو</string>
     <string name="settings_section_server">السيرفر</string>
     <string name="settings_section_profile">البروفايل النشط</string>
     <string name="settings_section_appearance">المظهر</string>
