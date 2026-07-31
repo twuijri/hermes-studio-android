@@ -47,7 +47,13 @@ import kotlinx.coroutines.launch
  * seeing the sign-in form on every launch reads as "your session is gone".
  */
 @Composable
-fun LoadingScreen(baseUrl: String) {
+fun LoadingScreen(
+    baseUrl: String,
+    error: String?,
+    busy: Boolean,
+    onRetry: () -> Unit,
+    onSignOut: () -> Unit,
+) {
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier.fillMaxSize().padding(32.dp),
@@ -64,7 +70,25 @@ fun LoadingScreen(baseUrl: String) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(28.dp))
-            CircularProgressIndicator(modifier = Modifier.size(22.dp))
+            if (busy) {
+                CircularProgressIndicator(modifier = Modifier.size(22.dp))
+            } else {
+                error?.let {
+                    Text(
+                        it,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        textAlign = TextAlign.Center,
+                    )
+                    Spacer(Modifier.height(18.dp))
+                }
+                Button(onClick = onRetry, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.action_retry))
+                }
+                TextButton(onClick = onSignOut) {
+                    Text(stringResource(R.string.login_use_different_account))
+                }
+            }
         }
     }
 }

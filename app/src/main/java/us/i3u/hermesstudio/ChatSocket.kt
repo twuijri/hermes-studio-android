@@ -17,8 +17,11 @@ sealed interface RunEvent {
     data class Reasoning(val delta: String) : RunEvent
     data class Tool(val name: String) : RunEvent
     data class Done(val output: String, val reasoning: String) : RunEvent
-    data class Failed(val error: String, val beforeAnyOutput: Boolean) : RunEvent
+    data class RequiresAction(val kind: RequiredAction) : RunEvent
+    data class Failed(val error: String, val retryableTransport: Boolean) : RunEvent
 }
+
+enum class RequiredAction { Approval, Clarification }
 
 /**
  * The streaming half of the chat API.
@@ -50,12 +53,16 @@ class ChatSocket(
         input: String,
         attachments: List<Upload>,
         reasoningEffort: String?,
+        model: String?,
+        provider: String?,
     ): Flow<RunEvent> = callbackFlow {
         val payload = JSONObject()
             .put("input", contentFor(input, attachments))
             .put("profile", profile)
             .put("session_id", sessionId)
         if (!reasoningEffort.isNullOrBlank()) payload.put("reasoning_effort", reasoningEffort)
+        if (!model.isNullOrBlank()) payload.put("model", model)
+        if (!provider.isNullOrBlank()) payload.put("provider", provider)
 
         val options = IO.Options.builder()
             .setForceNew(true)
@@ -68,16 +75,18 @@ class ChatSocket(
 
         val live = IO.socket(URI.create(baseUrl.trimEnd('/') + "/chat-run"), options)
         socket = live
-        var sawOutput = false
+        var runStarted = false
+        var terminal = false
 
         fun text(args: Array<out Any?>, key: String): String =
             (args.firstOrNull() as? JSONObject)?.optString(key).orEmpty()
 
         live.on(Socket.EVENT_CONNECT) { live.emit("run", payload) }
+        live.on("run.started") { runStarted = true }
         live.on("message.delta") { args ->
             val delta = text(args, "delta")
             if (delta.isNotEmpty()) {
-                sawOutput = true
+                runStarted = true
                 trySend(RunEvent.Text(delta))
             }
         }
@@ -85,16 +94,21 @@ class ChatSocket(
         listOf("reasoning.delta", "thinking.delta").forEach { event ->
             live.on(event) { args ->
                 val delta = text(args, "delta")
-                if (delta.isNotEmpty()) trySend(RunEvent.Reasoning(delta))
+                if (delta.isNotEmpty()) {
+                    runStarted = true
+                    trySend(RunEvent.Reasoning(delta))
+                }
             }
         }
         live.on("tool.started") { args ->
+            runStarted = true
             val name = (args.firstOrNull() as? JSONObject)?.let {
                 it.optString("name").ifBlank { it.optString("tool") }
             }.orEmpty()
             if (name.isNotBlank()) trySend(RunEvent.Tool(name))
         }
         live.on("run.completed") { args ->
+            terminal = true
             val event = args.firstOrNull() as? JSONObject
             trySend(
                 RunEvent.Done(
@@ -105,26 +119,34 @@ class ChatSocket(
             close()
         }
         live.on("run.failed") { args ->
+            terminal = true
             val event = args.firstOrNull() as? JSONObject
             val message = event?.optString("error").orEmpty()
-            trySend(RunEvent.Failed(message.ifBlank { "run failed" }, beforeAnyOutput = !sawOutput))
+            trySend(RunEvent.Failed(message.ifBlank { "run failed" }, retryableTransport = false))
             close()
         }
         // A run that needs a human decision cannot be answered from here yet, so
         // it is reported rather than left hanging.
-        listOf("approval.requested", "clarify.requested").forEach { event ->
-            live.on(event) {
-                trySend(RunEvent.Failed("waiting_for_approval", beforeAnyOutput = !sawOutput))
-                close()
-            }
+        live.on("approval.requested") {
+            terminal = true
+            trySend(RunEvent.RequiresAction(RequiredAction.Approval))
+            close()
+        }
+        live.on("clarify.requested") {
+            terminal = true
+            trySend(RunEvent.RequiresAction(RequiredAction.Clarification))
+            close()
         }
         live.on(Socket.EVENT_CONNECT_ERROR) { args ->
+            terminal = true
             val detail = args.firstOrNull()?.toString().orEmpty()
-            trySend(RunEvent.Failed(detail.ifBlank { "connect_error" }, beforeAnyOutput = true))
+            trySend(RunEvent.Failed(detail.ifBlank { "connect_error" }, retryableTransport = true))
             close()
         }
         live.on(Socket.EVENT_DISCONNECT) {
-            if (!sawOutput) trySend(RunEvent.Failed("disconnected", beforeAnyOutput = true))
+            if (!terminal) {
+                trySend(RunEvent.Failed("disconnected", retryableTransport = !runStarted))
+            }
             close()
         }
 

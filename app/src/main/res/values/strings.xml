@@ -21,6 +21,7 @@
     <string name="action_sign_out">Sign out</string>
     <string name="action_remove">Remove</string>
     <string name="action_selected">Selected</string>
+    <string name="action_retry">Retry</string>
 
     <!-- First run: launch screen and walkthrough -->
     <string name="intro_restoring">Restoring your session…</string>
@@ -43,6 +44,7 @@
     <string name="login_password">Password</string>
     <string name="login_submit">Sign in</string>
     <string name="login_submitting">Connecting…</string>
+    <string name="login_use_different_account">Use a different account</string>
     <string name="login_note">Credentials are stored encrypted on this device and sent only to the address above.</string>
 
     <!-- Conversation list -->
@@ -63,6 +65,8 @@
 
     <!-- Conversation -->
     <string name="conversation_empty">Send a message to %1$s</string>
+    <string name="run_requires_approval">This run is waiting for approval. Open Studio to respond.</string>
+    <string name="run_requires_clarification">This run needs an answer before it can continue. Open Studio to respond.</string>
     <string name="conversation_your_agent">your agent</string>
     <string name="conversation_thinking">Thinking…</string>
     <string name="conversation_tool">Running %1$s…</string>
@@ -221,6 +225,7 @@
     <string name="error_server_address">Enter a server address such as https://hermes.example.com</string>
     <string name="error_credentials_required">Username and password are required</string>
     <string name="error_session_expired">Session expired: %1$s</string>
+    <string name="error_session_restore">Could not restore the saved session: %1$s</string>
     <string name="error_microphone">Could not start the microphone</string>
     <string name="error_recording_short">That recording was too short</string>
     <string name="error_image_unreadable">That image could not be read</string>

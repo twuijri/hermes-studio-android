@@ -1,5 +1,6 @@
 package us.i3u.hermesstudio
 
+import io.socket.client.Ack
 import io.socket.client.IO
 import io.socket.client.Socket
 import io.socket.engineio.client.transports.WebSocket
@@ -13,6 +14,7 @@ import java.net.URI
 sealed interface RoomEvent {
     data object Connected : RoomEvent
     data object Dropped : RoomEvent
+    data class Failed(val error: String) : RoomEvent
     data class Posted(val message: RoomMessage) : RoomEvent
 }
 
@@ -50,8 +52,18 @@ class GroupSocket(
         joinedRoom = roomId
 
         live.on(Socket.EVENT_CONNECT) {
-            live.emit("join", JSONObject().put("roomId", roomId).put("name", memberName))
-            trySend(RoomEvent.Connected)
+            live.emit(
+                "join",
+                JSONObject().put("roomId", roomId).put("name", memberName),
+                Ack { args ->
+                    val error = (args.firstOrNull() as? JSONObject)?.optString("error").orEmpty()
+                    if (error.isBlank()) trySend(RoomEvent.Connected)
+                    else {
+                        trySend(RoomEvent.Failed(error))
+                        close()
+                    }
+                },
+            )
         }
         live.on(Socket.EVENT_DISCONNECT) { trySend(RoomEvent.Dropped) }
         live.on(Socket.EVENT_CONNECT_ERROR) { trySend(RoomEvent.Dropped) }
@@ -85,7 +97,12 @@ class GroupSocket(
     }
 
     /** Posts into the room this socket is joined to. */
-    fun post(roomId: String, text: String, senderName: String): Boolean {
+    fun post(
+        roomId: String,
+        text: String,
+        senderName: String,
+        onResult: (error: String?) -> Unit = {},
+    ): Boolean {
         val live = socket ?: return false
         if (!live.connected()) return false
         live.emit(
@@ -94,6 +111,10 @@ class GroupSocket(
                 .put("roomId", roomId)
                 .put("content", text)
                 .put("senderName", senderName),
+            Ack { args ->
+                val error = (args.firstOrNull() as? JSONObject)?.optString("error").orEmpty()
+                onResult(error.ifBlank { null })
+            },
         )
         return true
     }

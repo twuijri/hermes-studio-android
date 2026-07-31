@@ -37,7 +37,12 @@ fun formatStamp(raw: String?): String {
     val millis = raw.toLongOrNull()
     if (millis != null) {
         val normalized = if (millis < 100_000_000_000L) millis * 1000 else millis
-        return android.text.format.DateFormat.format("h:mm a", normalized).toString()
+        val now = java.util.Calendar.getInstance()
+        val then = java.util.Calendar.getInstance().apply { timeInMillis = normalized }
+        val sameDay = now.get(java.util.Calendar.ERA) == then.get(java.util.Calendar.ERA) &&
+            now.get(java.util.Calendar.YEAR) == then.get(java.util.Calendar.YEAR) &&
+            now.get(java.util.Calendar.DAY_OF_YEAR) == then.get(java.util.Calendar.DAY_OF_YEAR)
+        return android.text.format.DateFormat.format(if (sameDay) "h:mm a" else "yyyy-MM-dd", normalized).toString()
     }
     // ISO 8601: keep the clock when the day is today, otherwise the date.
     val date = raw.take(10)

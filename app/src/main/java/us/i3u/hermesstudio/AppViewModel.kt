@@ -59,12 +59,15 @@ data class UiState(
     /** Text produced by the last recording, consumed by the composer. */
     val transcript: String? = null,
     val models: List<ModelOption> = emptyList(),
+    /** Profile whose entries are currently in [models]. */
+    val modelsProfile: String? = null,
     val loadingModels: Boolean = false,
     /** Blank means the profile default, matching Studio's "Default" chip. */
     val reasoningEffort: String = "",
     /** BCP-47 tag chosen in Settings; blank follows the system. */
     val language: String = "",
     val sessionModel: String? = null,
+    val sessionProvider: String? = null,
     val defaultModel: String? = null,
     val savingSetting: Boolean = false,
     /** The tool the agent is running right now, when it says so. */
@@ -77,6 +80,7 @@ data class UiState(
     val openGroup: SettingsGroup? = null,
     val agentSettings: AgentSettings? = null,
     val autoStart: AutoStartPolicy? = null,
+    val loadingAgentSettings: Boolean = false,
     val notice: String? = null,
 )
 
@@ -91,7 +95,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val group = GroupSocket(store.baseUrl, store.token)
     private val recorder = Recorder(app)
     private var runJob: kotlinx.coroutines.Job? = null
+    private var historyJob: kotlinx.coroutines.Job? = null
     private var roomJob: kotlinx.coroutines.Job? = null
+    private var roomLoadJob: kotlinx.coroutines.Job? = null
+    private var openingRoomId: String? = null
+    private var activeRunSessionId: String? = null
 
     private val _state = MutableStateFlow(
         UiState(
@@ -141,15 +149,32 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             syncBranding()
         },
         onFailure = { failure ->
-            store.clearCredentials()
-            _state.update {
-                it.copy(
-                    screen = Screen.Login,
-                    error = str(R.string.error_session_expired, failure.readableMessage(localized)),
-                )
+            if (failure.invalidatesSavedSession()) {
+                store.clearCredentials()
+                _state.update {
+                    it.copy(
+                        screen = Screen.Login,
+                        error = str(R.string.error_session_expired, failure.readableMessage(localized)),
+                    )
+                }
+            } else {
+                // A timeout or an offline server does not invalidate a token.
+                // Keep the launch screen and let the user retry in place.
+                _state.update {
+                    it.copy(
+                        screen = Screen.Loading,
+                        error = str(R.string.error_session_restore, failure.readableMessage(localized)),
+                    )
+                }
             }
         },
     )
+
+    fun retrySession() {
+        if (!store.isConfigured || _state.value.busy) return
+        _state.update { it.copy(screen = Screen.Loading, error = null) }
+        restoreSession()
+    }
 
     fun login(baseUrl: String, username: String, password: String) {
         val normalized = normalizeUrl(baseUrl)
@@ -241,31 +266,61 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     )
 
     fun selectProfile(name: String) {
+        cancelActiveRun(abort = true)
+        historyJob?.cancel()
+        historyJob = null
         store.profile = name
-        _state.update { it.copy(activeProfile = name, screen = Screen.Chats, tab = Tab.Chats) }
+        _state.update {
+            it.copy(
+                activeProfile = name,
+                screen = Screen.Chats,
+                tab = Tab.Chats,
+                openSession = null,
+                lines = emptyList(),
+                attachments = emptyList(),
+                sessionModel = null,
+                sessionProvider = null,
+                models = emptyList(),
+                modelsProfile = null,
+                defaultModel = null,
+                serverConfig = null,
+                agentSettings = null,
+                autoStart = null,
+            )
+        }
     }
 
     // ── conversation ──────────────────────────────────────────────────────
 
     /** Open an existing Studio conversation and load its history. */
     fun openSession(session: SessionSummary) {
-        val profile = session.profile ?: _state.value.activeProfile
-        store.setSessionFor(profile.ifBlank { "default" }, session.id)
+        cancelActiveRun(abort = true)
+        historyJob?.cancel()
+        val profile = session.profile?.ifBlank { null }
+            ?: _state.value.activeProfile.ifBlank { "default" }
+        store.setSessionFor(profile, session.id)
         _state.update {
             it.copy(
                 screen = Screen.Conversation,
                 openSession = session,
                 sessionModel = session.model,
+                sessionProvider = session.provider,
                 lines = emptyList(),
+                attachments = emptyList(),
+                models = if (it.modelsProfile == profile) it.models else emptyList(),
+                modelsProfile = it.modelsProfile.takeIf { loaded -> loaded == profile },
                 loadingHistory = true,
                 error = null,
             )
         }
 
-        viewModelScope.launch {
+        historyJob = viewModelScope.launch {
             runCatching { withContext(Dispatchers.IO) { api.messages(session.id) } }
                 .onSuccess { history ->
                     _state.update { state ->
+                        if (state.screen != Screen.Conversation || state.openSession?.id != session.id) {
+                            return@update state
+                        }
                         state.copy(
                             loadingHistory = false,
                             lines = history.map { message ->
@@ -279,18 +334,36 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
                 .onFailure { failure ->
+                    if (failure is kotlinx.coroutines.CancellationException) return@onFailure
                     _state.update {
-                        it.copy(loadingHistory = false, error = failure.readableMessage(localized))
+                        if (it.screen == Screen.Conversation && it.openSession?.id == session.id) {
+                            it.copy(loadingHistory = false, error = failure.readableMessage(localized))
+                        } else {
+                            it
+                        }
                     }
                 }
         }
     }
 
     fun startNewConversation() {
+        cancelActiveRun(abort = true)
+        historyJob?.cancel()
+        historyJob = null
         val profile = _state.value.activeProfile.ifBlank { "default" }
         store.setSessionFor(profile, "")
         _state.update {
-            it.copy(screen = Screen.Conversation, openSession = null, lines = emptyList(), error = null)
+            it.copy(
+                screen = Screen.Conversation,
+                openSession = null,
+                lines = emptyList(),
+                attachments = emptyList(),
+                sessionModel = null,
+                sessionProvider = null,
+                models = if (it.modelsProfile == profile) it.models else emptyList(),
+                modelsProfile = it.modelsProfile.takeIf { loaded -> loaded == profile },
+                error = null,
+            )
         }
     }
 
@@ -301,6 +374,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val session = _state.value.openSession
         val profile = session?.profile?.ifBlank { null }
             ?: _state.value.activeProfile.ifBlank { "default" }
+        val selectedModel = _state.value.sessionModel
+        val selectedProvider = _state.value.sessionProvider
+        val reasoningEffort = _state.value.reasoningEffort
 
         // Studio's own client names a conversation before it exists, which is
         // what lets the very first message belong to a session.
@@ -322,13 +398,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             )
         }
 
+        activeRunSessionId = sessionId
         runJob = viewModelScope.launch {
             var answer = StringBuilder()
             var thinking = StringBuilder()
             var streamed = false
 
             runCatching {
-                chat.run(profile, sessionId, text, files, _state.value.reasoningEffort)
+                chat.run(
+                    profile = profile,
+                    sessionId = sessionId,
+                    input = text,
+                    attachments = files,
+                    reasoningEffort = reasoningEffort,
+                    model = selectedModel,
+                    provider = selectedProvider,
+                )
                     .collect { event ->
                         when (event) {
                             is RunEvent.Text -> {
@@ -367,11 +452,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                                 }
                                 streamed = true
                             }
+                            is RunEvent.RequiresAction -> {
+                                if (streamed) {
+                                    updateLastReply(answer.toString(), thinking.toString(), streaming = false)
+                                }
+                                val actionNotice = str(
+                                    when (event.kind) {
+                                        RequiredAction.Approval -> R.string.run_requires_approval
+                                        RequiredAction.Clarification -> R.string.run_requires_clarification
+                                    },
+                                )
+                                _state.update {
+                                    it.copy(lines = it.lines + ChatLine(actionNotice, fromUser = false, isError = true))
+                                }
+                                // This is a valid run state, not a transport
+                                // failure. Never submit the same turn over REST.
+                                streamed = true
+                            }
                             is RunEvent.Failed -> {
                                 // A socket that never got going is not a failed
                                 // run: fall back to the REST wrapper instead of
                                 // telling the user the answer is lost.
-                                if (event.beforeAnyOutput && !streamed) throw SocketUnavailable(event.error)
+                                if (event.retryableTransport && !streamed) throw SocketUnavailable(event.error)
                                 updateLastReply(answer.toString(), thinking.toString(), streaming = false)
                                 _state.update {
                                     it.copy(lines = it.lines + ChatLine(event.error, fromUser = false, isError = true))
@@ -380,8 +482,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         }
                     }
             }.onFailure { failure ->
+                if (failure is kotlinx.coroutines.CancellationException) return@onFailure
                 if (failure is SocketUnavailable) {
-                    sendOverRest(profile, sessionId, text, files)
+                    sendOverRest(
+                        profile = profile,
+                        sessionId = sessionId,
+                        text = text,
+                        files = files,
+                        reasoningEffort = reasoningEffort,
+                        model = selectedModel,
+                        provider = selectedProvider,
+                    )
+                    finishRun(sessionId)
                     return@launch
                 }
                 _state.update {
@@ -390,7 +502,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 }
             }
-            _state.update { it.copy(sending = false, activity = null) }
+            finishRun(sessionId)
         }
     }
 
@@ -400,6 +512,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         sessionId: String,
         text: String,
         files: List<Upload>,
+        reasoningEffort: String?,
+        model: String?,
+        provider: String?,
     ) {
         runCatching {
             withContext(Dispatchers.IO) {
@@ -408,10 +523,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     input = text,
                     sessionId = sessionId,
                     attachments = files,
-                    reasoningEffort = _state.value.reasoningEffort,
+                    reasoningEffort = reasoningEffort,
+                    model = model,
+                    provider = provider,
                 )
             }
         }.onSuccess { reply ->
+            if (activeRunSessionId != sessionId) return@onSuccess
             reply.sessionId?.let { store.setSessionFor(profile, it) }
             val line = if (reply.error != null && reply.output.isBlank()) {
                 ChatLine(reply.error, fromUser = false, isError = true)
@@ -420,6 +538,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             _state.update { it.copy(lines = it.lines + line, sending = false, activity = null) }
         }.onFailure { failure ->
+            if (failure is kotlinx.coroutines.CancellationException || activeRunSessionId != sessionId) {
+                return@onFailure
+            }
             _state.update {
                 it.copy(
                     lines = it.lines + ChatLine(failure.readableMessage(localized), fromUser = false, isError = true),
@@ -446,16 +567,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Asks the server to stop the run that is streaming right now. */
     fun stopRun() {
-        val profile = currentProfile()
-        val sessionId = store.sessionFor(profile).ifBlank { _state.value.openSession?.id }
-        if (!sessionId.isNullOrBlank()) chat.abort(sessionId)
+        cancelActiveRun(abort = true)
+    }
+
+    private fun cancelActiveRun(abort: Boolean) {
+        val sessionId = activeRunSessionId
+        if (abort && !sessionId.isNullOrBlank()) chat.abort(sessionId)
         runJob?.cancel()
+        runJob = null
+        activeRunSessionId = null
         _state.update { state ->
             val lines = state.lines.toMutableList()
             val index = lines.indexOfLast { it.streaming }
             if (index >= 0) lines[index] = lines[index].copy(streaming = false)
             state.copy(lines = lines, sending = false, activity = null)
         }
+    }
+
+    private fun finishRun(sessionId: String) {
+        if (activeRunSessionId != sessionId) return
+        activeRunSessionId = null
+        runJob = null
+        _state.update { it.copy(sending = false, activity = null) }
     }
 
     private class SocketUnavailable(message: String) : Exception(message)
@@ -539,14 +672,31 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // ── model and reasoning ───────────────────────────────────────────────
 
     fun loadModels() {
-        if (_state.value.models.isNotEmpty() || _state.value.loadingModels) return
         val profile = currentProfile()
-        _state.update { it.copy(loadingModels = true) }
+        val current = _state.value
+        if (current.modelsProfile == profile && (current.models.isNotEmpty() || current.loadingModels)) return
+        _state.update {
+            it.copy(
+                models = if (it.modelsProfile == profile) it.models else emptyList(),
+                modelsProfile = profile,
+                loadingModels = true,
+            )
+        }
         viewModelScope.launch {
             runCatching { withContext(Dispatchers.IO) { api.availableModels(profile) } }
-                .onSuccess { models -> _state.update { it.copy(models = models, loadingModels = false) } }
+                .onSuccess { models ->
+                    _state.update {
+                        if (it.modelsProfile == profile) it.copy(models = models, loadingModels = false) else it
+                    }
+                }
                 .onFailure { failure ->
-                    _state.update { it.copy(loadingModels = false, error = failure.readableMessage(localized)) }
+                    _state.update {
+                        if (it.modelsProfile == profile) {
+                            it.copy(loadingModels = false, error = failure.readableMessage(localized))
+                        } else {
+                            it
+                        }
+                    }
                 }
         }
     }
@@ -555,7 +705,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun selectModel(option: ModelOption) {
         val sessionId = _state.value.openSession?.id
             ?: store.sessionFor(currentProfile()).ifBlank { null }
-        _state.update { it.copy(sessionModel = option.id) }
+        _state.update { it.copy(sessionModel = option.id, sessionProvider = option.provider) }
         if (sessionId == null) return
 
         viewModelScope.launch {
@@ -575,19 +725,29 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // ── group room ────────────────────────────────────────────────────────
 
     fun openRoom(room: Room) {
+        leaveRoom()
+        openingRoomId = room.id
         _state.update {
             it.copy(screen = Screen.Room, openRoom = null, loadingHistory = true, error = null, roomLive = false)
         }
-        launchWork(
-            work = { api.room(room.id) },
-            onSuccess = { detail ->
-                _state.update { it.copy(openRoom = detail, loadingHistory = false) }
-                listenToRoom(room.id)
-            },
-            onFailure = { failure ->
-                _state.update { it.copy(loadingHistory = false, error = failure.readableMessage(localized)) }
-            },
-        )
+        roomLoadJob = viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.room(room.id) } }
+                .onSuccess { detail ->
+                    if (_state.value.screen != Screen.Room || openingRoomId != room.id) return@onSuccess
+                    _state.update { it.copy(openRoom = detail, loadingHistory = false) }
+                    listenToRoom(room.id)
+                }
+                .onFailure { failure ->
+                    if (failure is kotlinx.coroutines.CancellationException) return@onFailure
+                    _state.update {
+                        if (it.screen == Screen.Room && openingRoomId == room.id) {
+                            it.copy(loadingHistory = false, error = failure.readableMessage(localized))
+                        } else {
+                            it
+                        }
+                    }
+                }
+        }
     }
 
     /** Keeps the open room current, and is what makes posting possible. */
@@ -599,6 +759,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     when (event) {
                         is RoomEvent.Connected -> _state.update { it.copy(roomLive = true) }
                         is RoomEvent.Dropped -> _state.update { it.copy(roomLive = false) }
+                        is RoomEvent.Failed -> {
+                            _state.update {
+                                it.copy(roomLive = false, error = event.error)
+                            }
+                        }
                         is RoomEvent.Posted -> _state.update { state ->
                             val room = state.openRoom ?: return@update state
                             if (room.id != roomId) return@update state
@@ -612,6 +777,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun leaveRoom() {
+        openingRoomId = null
+        roomLoadJob?.cancel()
+        roomLoadJob = null
         roomJob?.cancel()
         roomJob = null
         _state.update { it.copy(roomLive = false) }
@@ -731,14 +899,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Sends into the open room over the socket the room screen holds. */
-    fun postToRoom(text: String) {
-        val room = _state.value.openRoom ?: return
+    fun postToRoom(text: String): Boolean {
+        val room = _state.value.openRoom ?: return false
         val clean = text.trim()
-        if (clean.isBlank()) return
-        val sent = group.post(room.id, clean, _state.value.account ?: "phone")
+        if (clean.isBlank()) return false
+        val sent = group.post(room.id, clean, _state.value.account ?: "phone") { error ->
+            if (error != null) _state.update { it.copy(error = error) }
+        }
         if (!sent) {
             _state.update { it.copy(error = str(R.string.error_room_offline)) }
         }
+        return sent
     }
 
     // ── settings ──────────────────────────────────────────────────────────
@@ -746,7 +917,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // ── settings groups ───────────────────────────────────────────────────
 
     fun openSettingsGroup(group: SettingsGroup) {
-        _state.update { it.copy(screen = Screen.SettingsGroup, openGroup = group, error = null, notice = null) }
+        _state.update {
+            it.copy(
+                screen = Screen.SettingsGroup,
+                openGroup = group,
+                error = null,
+                notice = null,
+                loadingAgentSettings = group == SettingsGroup.Agent,
+            )
+        }
         if (group == SettingsGroup.Agent) loadAgentSettings()
         if (group == SettingsGroup.Profile) loadModels()
     }
@@ -757,8 +936,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             runCatching {
                 withContext(Dispatchers.IO) { api.agentSettings(profile) to api.autoStartPolicy() }
             }.onSuccess { (agent, policy) ->
-                _state.update { it.copy(agentSettings = agent, autoStart = policy) }
-            }.onFailure { failure -> _state.update { it.copy(error = failure.readableMessage(localized)) } }
+                _state.update {
+                    it.copy(agentSettings = agent, autoStart = policy, loadingAgentSettings = false)
+                }
+            }.onFailure { failure ->
+                _state.update {
+                    it.copy(loadingAgentSettings = false, error = failure.readableMessage(localized))
+                }
+            }
         }
     }
 
@@ -961,13 +1146,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // ── misc ──────────────────────────────────────────────────────────────
 
     fun back() {
+        when (_state.value.screen) {
+            Screen.Conversation -> cancelActiveRun(abort = true)
+            Screen.Room -> leaveRoom()
+            else -> Unit
+        }
         _state.update { state ->
             val target = when (state.screen) {
                 Screen.Channel -> Screen.Channels
                 Screen.Channels, Screen.SettingsGroup -> Screen.Settings
                 else -> if (state.tab == Tab.Groups) Screen.Groups else Screen.Chats
             }
-            state.copy(screen = target, error = null)
+            state.copy(
+                screen = target,
+                error = null,
+                openSession = state.openSession.takeUnless { state.screen == Screen.Conversation },
+                openRoom = state.openRoom.takeUnless { state.screen == Screen.Room },
+                attachments = if (state.screen == Screen.Conversation) emptyList() else state.attachments,
+                sessionModel = state.sessionModel.takeUnless { state.screen == Screen.Conversation },
+                sessionProvider = state.sessionProvider.takeUnless { state.screen == Screen.Conversation },
+            )
         }
     }
 
@@ -976,6 +1174,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun dismissError() = _state.update { it.copy(error = null) }
 
     fun signOut() {
+        cancelActiveRun(abort = true)
+        leaveRoom()
         store.clearCredentials()
         _state.update {
             UiState(
@@ -1042,6 +1242,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 }
 
 private val INVITE_ALPHABET = ('A'..'Z') + ('2'..'9')
+
+internal fun Throwable.invalidatesSavedSession(): Boolean =
+    (this as? HermesException)?.statusCode in setOf(401, 403)
 
 private fun Throwable.readableMessage(context: android.content.Context): String = when (this) {
     // A HermesException already carries what the server said, in its own words.

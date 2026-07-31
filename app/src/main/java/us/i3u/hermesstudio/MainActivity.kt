@@ -150,7 +150,13 @@ private fun App(viewModel: AppViewModel = viewModel()) {
     }
 
     when (state.screen) {
-        Screen.Loading -> LoadingScreen(state.baseUrl)
+        Screen.Loading -> LoadingScreen(
+            baseUrl = state.baseUrl,
+            error = state.error,
+            busy = state.busy,
+            onRetry = { viewModel.retrySession() },
+            onSignOut = { viewModel.signOut() },
+        )
         Screen.Onboarding -> OnboardingScreen(
             languageAction = { LanguageAction(state, viewModel) },
             onDone = { viewModel.finishOnboarding() },
@@ -498,17 +504,21 @@ private fun GroupsScreen(state: UiState, viewModel: AppViewModel) {
                                     overflow = TextOverflow.Ellipsis,
                                     style = MaterialTheme.typography.bodyLarge,
                                 )
+                                formatStamp(room.updatedAt).takeIf { it.isNotBlank() }?.let { stamp ->
+                                    Text(
+                                        stamp,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                            if (room.agentCount != null && room.memberCount != null) {
                                 Text(
-                                    formatStamp(room.updatedAt),
+                                    stringResource(R.string.groups_counts, room.agentCount, room.memberCount),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
-                            Text(
-                                stringResource(R.string.groups_counts, room.agentCount, room.memberCount),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
                         }
                         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
                     }
@@ -595,10 +605,7 @@ private fun RoomScreen(state: UiState, viewModel: AppViewModel) {
                     room?.agents?.takeIf { it.isNotEmpty() }?.joinToString(", "),
                     stringResource(if (state.roomLive) R.string.room_live else R.string.room_offline),
                 ).joinToString(" · "),
-                onBack = {
-                    viewModel.leaveRoom()
-                    viewModel.back()
-                },
+                onBack = { viewModel.back() },
             )
         },
     ) { padding ->
@@ -627,7 +634,7 @@ private fun RoomScreen(state: UiState, viewModel: AppViewModel) {
                     MessageBubble(
                         ChatLine(
                             text = message.content,
-                            fromUser = !message.isAgent,
+                            fromUser = !message.isAgent && message.sender == state.account,
                             timestamp = message.timestamp,
                             sender = message.sender,
                         ),
@@ -667,8 +674,7 @@ private fun RoomScreen(state: UiState, viewModel: AppViewModel) {
                 ) {
                     IconButton(
                         onClick = {
-                            viewModel.postToRoom(draft)
-                            draft = ""
+                            if (viewModel.postToRoom(draft)) draft = ""
                         },
                         enabled = draft.isNotBlank(),
                     ) {
@@ -1711,12 +1717,14 @@ private fun SettingsGroupScreen(state: UiState, viewModel: AppViewModel) {
             state.error?.let { ErrorNote(it) { viewModel.dismissError() } }
             state.notice?.let { NoticeNote(it) { viewModel.dismissNotice() } }
 
-            when (group) {
-                SettingsGroup.Server -> ServerSettings(state, viewModel)
-                SettingsGroup.Profile -> ProfileSettings(state, viewModel)
-                SettingsGroup.Agent -> AgentSettings(state, viewModel)
-                SettingsGroup.Device -> DeviceSettings(state, viewModel)
-                SettingsGroup.About -> AboutSettings()
+            if (!state.loadingAgentSettings) {
+                when (group) {
+                    SettingsGroup.Server -> ServerSettings(state, viewModel)
+                    SettingsGroup.Profile -> ProfileSettings(state, viewModel)
+                    SettingsGroup.Agent -> AgentSettings(state, viewModel)
+                    SettingsGroup.Device -> DeviceSettings(state, viewModel)
+                    SettingsGroup.About -> AboutSettings()
+                }
             }
         }
     }
@@ -2187,14 +2195,12 @@ private fun ChannelScreen(state: UiState, viewModel: AppViewModel) {
                 )
             }
 
-            if (spec.fields.isNotEmpty()) {
-                Button(
-                    onClick = { viewModel.saveChannel(platform, values.toMap(), enabled) },
-                    enabled = !state.savingSetting,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
-                ) {
-                    Text(stringResource(R.string.channel_save))
-                }
+            Button(
+                onClick = { viewModel.saveChannel(platform, values.toMap(), enabled) },
+                enabled = !state.savingSetting,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+            ) {
+                Text(stringResource(R.string.channel_save))
             }
 
             if (status?.configured == true) {

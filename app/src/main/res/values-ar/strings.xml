@@ -20,6 +20,7 @@
     <string name="action_sign_out">تسجيل الخروج</string>
     <string name="action_remove">إزالة</string>
     <string name="action_selected">محدد</string>
+    <string name="action_retry">إعادة المحاولة</string>
 
     <!-- أول تشغيل: شاشة الإقلاع وجولة التعريف -->
     <string name="intro_restoring">جارٍ استعادة جلستك…</string>
@@ -42,6 +43,7 @@
     <string name="login_password">كلمة المرور</string>
     <string name="login_submit">تسجيل الدخول</string>
     <string name="login_submitting">جارٍ الاتصال…</string>
+    <string name="login_use_different_account">استخدام حساب آخر</string>
     <string name="login_note">بيانات الدخول تُحفظ مشفرة على هذا الجهاز، ولا تُرسل إلا إلى العنوان أعلاه.</string>
 
     <!-- قائمة المحادثات -->
@@ -62,6 +64,8 @@
 
     <!-- المحادثة -->
     <string name="conversation_empty">أرسل رسالة إلى %1$s</string>
+    <string name="run_requires_approval">هذا التشغيل ينتظر موافقة. افتح الاستديو للرد.</string>
+    <string name="run_requires_clarification">هذا التشغيل يحتاج إجابة قبل أن يكمل. افتح الاستديو للرد.</string>
     <string name="conversation_your_agent">وكيلك</string>
     <string name="conversation_thinking">يفكر…</string>
     <string name="conversation_tool">ينفّذ %1$s…</string>
@@ -220,6 +224,7 @@
     <string name="error_server_address">أدخل عنوان سيرفر مثل https://hermes.example.com</string>
     <string name="error_credentials_required">اسم المستخدم وكلمة المرور مطلوبان</string>
     <string name="error_session_expired">انتهت الجلسة: %1$s</string>
+    <string name="error_session_restore">تعذّرت استعادة الجلسة المحفوظة: %1$s</string>
     <string name="error_microphone">تعذّر تشغيل المايكروفون</string>
     <string name="error_recording_short">التسجيل قصير جدًا</string>
     <string name="error_image_unreadable">تعذّرت قراءة هذه الصورة</string>

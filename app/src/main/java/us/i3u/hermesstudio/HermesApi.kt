@@ -52,9 +52,10 @@ class HermesApi(
         client.newCall(request(path, method, body)).execute().use { response ->
             val text = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
-                val detail = runCatching { JSONObject(text).optString("error") }.getOrNull()
+                val detail = errorDetail(text)
                 throw HermesException(
                     if (detail.isNullOrBlank()) "HTTP ${response.code}" else "HTTP ${response.code}: $detail",
+                    statusCode = response.code,
                 )
             }
             if (text.isBlank()) return JSONObject()
@@ -76,7 +77,11 @@ class HermesApi(
     /** GET /api/auth/me — cheap check that a stored token is still valid. */
     fun verifyToken(): String {
         val me = call("/api/auth/me")
-        return me.optString("username").ifBlank { me.optString("userId") }
+        val user = me.optJSONObject("user")
+        return user?.optString("username").orEmpty()
+            .ifBlank { user?.optString("id").orEmpty() }
+            .ifBlank { me.optString("username") }
+            .ifBlank { me.optString("userId") }
     }
 
     /** GET /api/hermes/profiles */
@@ -268,7 +273,17 @@ class HermesApi(
                 id = id,
                 title = firstNonBlank(item, "title", "name", "summary") ?: id.take(8),
                 model = firstNonBlank(item, "model"),
-                updatedAt = firstNonBlank(item, "updated_at", "updatedAt", "created_at", "createdAt"),
+                provider = firstNonBlank(item, "provider"),
+                updatedAt = firstNonBlank(
+                    item,
+                    "last_active",
+                    "ended_at",
+                    "started_at",
+                    "updated_at",
+                    "updatedAt",
+                    "created_at",
+                    "createdAt",
+                ),
                 profile = firstNonBlank(item, "profile"),
             )
         }
@@ -353,8 +368,8 @@ class HermesApi(
             Room(
                 id = id,
                 name = firstNonBlank(item, "name", "title") ?: id.take(8),
-                agentCount = item.optInt("agentCount", item.optJSONArray("agents")?.length() ?: 0),
-                memberCount = item.optInt("memberCount", item.optJSONArray("members")?.length() ?: 0),
+                agentCount = optionalCount(item, "agentCount", "agents"),
+                memberCount = optionalCount(item, "memberCount", "members"),
                 updatedAt = firstNonBlank(item, "updatedAt", "updated_at", "lastMessageAt"),
             )
         }
@@ -385,11 +400,18 @@ class HermesApi(
         return RoomDetail(id = roomId, name = name, agents = agentNames, messages = messages)
     }
 
-    private fun multipart(path: String, field: String, bytes: ByteArray, filename: String, mime: String): JSONObject {
-        val body = MultipartBody.Builder()
-            .setType(MultipartBody.FORM)
-            .addFormDataPart(field, filename, bytes.toRequestBody(mime.toMediaType()))
-            .build()
+    private fun multipart(
+        path: String,
+        field: String,
+        bytes: ByteArray,
+        filename: String,
+        mime: String,
+        fields: Map<String, String> = emptyMap(),
+    ): JSONObject {
+        val body = MultipartBody.Builder().setType(MultipartBody.FORM).apply {
+            fields.forEach { (name, value) -> addFormDataPart(name, value) }
+            addFormDataPart(field, filename, bytes.toRequestBody(mime.toMediaType()))
+        }.build()
         val builder = Request.Builder().url(url(path)).post(body)
         if (token.isNotBlank()) builder.header("Authorization", "Bearer $token")
         builder.header("Accept", "application/json")
@@ -397,9 +419,10 @@ class HermesApi(
         client.newCall(builder.build()).execute().use { response ->
             val text = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
-                val detail = runCatching { JSONObject(text).optString("error") }.getOrNull()
+                val detail = errorDetail(text)
                 throw HermesException(
                     if (detail.isNullOrBlank()) "HTTP ${response.code}" else "HTTP ${response.code}: $detail",
+                    statusCode = response.code,
                 )
             }
             return runCatching { JSONObject(text) }.getOrElse { JSONObject() }
@@ -423,9 +446,34 @@ class HermesApi(
      * profile's configured provider, the same call the web composer makes.
      */
     fun transcribe(profile: String, bytes: ByteArray, filename: String, mime: String): String {
-        val result = multipart("/api/hermes/stt/transcribe?profile=${enc(profile)}", "audio", bytes, filename, mime)
+        val provider = activeSttProvider(profile)
+        val result = multipart(
+            path = "/api/hermes/stt/transcribe?profile=${enc(profile)}",
+            field = "audio",
+            bytes = bytes,
+            filename = filename,
+            mime = mime,
+            fields = provider?.let { mapOf("provider" to it) }.orEmpty(),
+        )
         return firstNonBlank(result, "text", "transcript", "output")
             ?: throw HermesException("The provider returned no text")
+    }
+
+    /**
+     * Current Studio versions require the selected provider in the multipart
+     * request. A 404 means an older server, whose transcribe route inferred it.
+     */
+    private fun activeSttProvider(profile: String): String? {
+        val status = try {
+            call("/api/hermes/stt/profile-status?profile=${enc(profile)}")
+        } catch (failure: HermesException) {
+            if (failure.statusCode == 404) return null
+            throw failure
+        }
+        val provider = firstNonBlank(status, "activeProvider")
+        if (status.optBoolean("configured", false) && provider != null && provider != "browser") return provider
+        val reason = firstNonBlank(status, "reason") ?: "no server-backed STT provider is configured"
+        throw HermesException("STT unavailable: $reason", statusCode = 409)
     }
 
     /**
@@ -441,6 +489,8 @@ class HermesApi(
         sessionId: String?,
         attachments: List<Upload> = emptyList(),
         reasoningEffort: String? = null,
+        model: String? = null,
+        provider: String? = null,
     ): ChatReply {
         // Studio sends either a plain string or an array of content blocks; the
         // block form is what carries images and files.
@@ -469,6 +519,8 @@ class HermesApi(
             .put("timeout_ms", 240_000)
         if (!sessionId.isNullOrBlank()) body.put("session_id", sessionId)
         if (!reasoningEffort.isNullOrBlank()) body.put("reasoning_effort", reasoningEffort)
+        if (!model.isNullOrBlank()) body.put("model", model)
+        if (!provider.isNullOrBlank()) body.put("provider", provider)
 
         val result = call("/api/chat-run/runs", "POST", body)
         val failure = result.optString("error").takeIf { it.isNotBlank() }
@@ -497,6 +549,20 @@ class HermesApi(
 
     private fun enc(value: String): String = java.net.URLEncoder.encode(value, "UTF-8")
 
+    private fun errorDetail(text: String): String? = runCatching {
+        when (val error = JSONObject(text).opt("error")) {
+            is String -> error
+            is JSONObject -> firstNonBlank(error, "message", "detail") ?: error.toString()
+            null, JSONObject.NULL -> null
+            else -> error.toString()
+        }
+    }.getOrNull()
+
+    private fun optionalCount(source: JSONObject, key: String, arrayKey: String): Int? {
+        if (source.has(key) && !source.isNull(key)) return source.optInt(key)
+        return source.optJSONArray(arrayKey)?.length()
+    }
+
     private fun firstNonBlank(source: JSONObject, vararg keys: String): String? {
         for (key in keys) {
             val value = source.optString(key)
@@ -506,7 +572,7 @@ class HermesApi(
     }
 }
 
-class HermesException(message: String) : Exception(message)
+class HermesException(message: String, val statusCode: Int? = null) : Exception(message)
 
 data class Profile(
     val name: String,
@@ -520,6 +586,7 @@ data class SessionSummary(
     val id: String,
     val title: String,
     val model: String?,
+    val provider: String? = null,
     val updatedAt: String?,
     val profile: String? = null,
 )
@@ -547,8 +614,8 @@ data class Message(
 data class Room(
     val id: String,
     val name: String,
-    val agentCount: Int,
-    val memberCount: Int,
+    val agentCount: Int?,
+    val memberCount: Int?,
     val updatedAt: String?,
 )
 

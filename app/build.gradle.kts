@@ -21,8 +21,8 @@ android {
         applicationId = "us.i3u.hermesstudio"
         minSdk = 26
         targetSdk = 34
-        versionCode = 15
-        versionName = "0.11.0"
+        versionCode = 16
+        versionName = "0.11.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -104,6 +104,8 @@ dependencies {
     implementation("com.caverock:androidsvg-aar:1.4")
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    testImplementation("org.json:json:20240303")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test:runner:1.5.2")
 }
