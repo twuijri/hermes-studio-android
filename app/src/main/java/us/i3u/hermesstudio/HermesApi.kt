@@ -206,6 +206,44 @@ class HermesApi(
         updateConfigSection(profile, platform, JSONObject().put("enabled", enabled), restart = true)
     }
 
+    /** The agent knobs Studio keeps under its Agent tab. */
+    fun agentSettings(profile: String): AgentSettings {
+        val agent = call("/api/hermes/config?profile=${enc(profile)}&section=agent").optJSONObject("agent")
+        return AgentSettings(
+            maxTurns = agent?.optInt("max_turns", 0)?.takeIf { it > 0 },
+            gatewayTimeout = agent?.optInt("gateway_timeout", -1)?.takeIf { it >= 0 },
+            restartDrainTimeout = agent?.optInt("restart_drain_timeout", 0)?.takeIf { it > 0 },
+            toolEnforcement = agent?.optString("tool_use_enforcement").orEmpty().ifBlank { "auto" },
+        )
+    }
+
+    /** GET /api/hermes/config?section=gatewayAutoStart — the whole policy. */
+    fun autoStartPolicy(): AutoStartPolicy {
+        val policy = call("/api/hermes/config?section=gatewayAutoStart").optJSONObject("gatewayAutoStart")
+        val include = policy?.optJSONArray("include")
+        val exclude = policy?.optJSONArray("exclude")
+        fun names(array: JSONArray?): List<String>? = array?.let { list ->
+            (0 until list.length()).mapNotNull { list.optString(it).takeIf { name -> name.isNotBlank() } }
+        }
+        return AutoStartPolicy(
+            enabled = policy?.optBoolean("enabled", true) ?: true,
+            include = names(include),
+            exclude = names(exclude).orEmpty(),
+        )
+    }
+
+    /**
+     * Writes the auto-start policy. A null include list means "every profile
+     * the server discovers", which is what Studio calls the all policy.
+     */
+    fun setAutoStartPolicy(policy: AutoStartPolicy) {
+        val values = JSONObject().put("enabled", policy.enabled)
+        if (policy.include == null) values.put("include", JSONObject.NULL)
+        else values.put("include", JSONArray().apply { policy.include.forEach { put(it) } })
+        values.put("exclude", JSONArray().apply { policy.exclude.forEach { put(it) } })
+        call("/api/hermes/config", "PUT", JSONObject().put("section", "gatewayAutoStart").put("values", values))
+    }
+
     /** PUT /api/hermes/config — one section at a time, as Studio does. */
     fun updateConfigSection(profile: String, section: String, values: JSONObject, restart: Boolean = false) {
         val body = JSONObject()
@@ -527,6 +565,20 @@ data class RoomDetail(
     val name: String,
     val agents: List<String>,
     val messages: List<RoomMessage>,
+)
+
+data class AgentSettings(
+    val maxTurns: Int?,
+    val gatewayTimeout: Int?,
+    val restartDrainTimeout: Int?,
+    val toolEnforcement: String,
+)
+
+data class AutoStartPolicy(
+    val enabled: Boolean,
+    /** null means every discovered profile. */
+    val include: List<String>?,
+    val exclude: List<String>,
 )
 
 data class ChannelStatus(

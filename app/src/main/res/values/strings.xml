@@ -183,6 +183,34 @@
     <string name="notice_channel_cleared">%1$s credentials removed</string>
     <string name="settings_auto_start_note">When this is on, your server starts each profile’s gateway on boot, so channels answer without anyone opening Studio.</string>
 
+    <string name="settings_group_server">Server and account</string>
+    <string name="settings_group_server_note">Address, signed-in user, sign out</string>
+    <string name="settings_group_profile">Active profile</string>
+    <string name="settings_group_profile_note">Which agent new chats talk to, and its default model</string>
+    <string name="settings_group_agent">Agent</string>
+    <string name="settings_group_agent_note">Turn limits, timeouts, tool use, gateway auto-start</string>
+    <string name="settings_group_channels_note">Telegram, Discord, Slack and the rest</string>
+    <string name="settings_group_device">This device</string>
+    <string name="settings_group_device_note">Language, app logo, reasoning effort</string>
+    <string name="settings_group_about_note">Version and credits</string>
+    <string name="agent_max_turns">Max turns</string>
+    <string name="agent_max_turns_note">Interaction rounds per conversation</string>
+    <string name="agent_gateway_timeout">Gateway timeout</string>
+    <string name="agent_gateway_timeout_note">Request inactivity timeout in seconds; 0 means unlimited</string>
+    <string name="agent_drain_timeout">Restart drain timeout</string>
+    <string name="agent_drain_timeout_note">Seconds to let work finish before a restart</string>
+    <string name="agent_tool_enforcement">Tool enforcement</string>
+    <string name="agent_tool_auto">Auto</string>
+    <string name="agent_tool_always">Always</string>
+    <string name="agent_tool_never">Never</string>
+    <string name="agent_autostart_title">Gateway auto-start</string>
+    <string name="agent_autostart_note">Which profile gateways your server starts when it boots. Without it, a channel stays silent after a reboot until someone starts it.</string>
+    <string name="agent_policy">Profile policy</string>
+    <string name="agent_policy_all">All discovered profiles</string>
+    <string name="agent_policy_include">Only the profiles I choose</string>
+    <string name="agent_policy_profiles">Profiles to start</string>
+    <string name="agent_unset">server default</string>
+
     <!-- Confirmations before something you cannot take back -->
     <string name="confirm_sign_out_title">Sign out?</string>
     <string name="confirm_sign_out_body">The token stored on this device is removed and you will have to sign in again. Nothing on your server changes.</string>

@@ -7,7 +7,7 @@ Not affiliated with EKKOLearnAI.
 The Studio web UI is built for the desktop, so this app talks to the same HTTP API
 directly and renders a native, phone-shaped interface instead of wrapping a web view.
 
-## What works today (v0.10)
+## What works today (v0.11)
 
 - **Replies stream in as they are written**, over the same `/chat-run` socket the
   web UI uses, with a stop button that calls the run off mid-sentence. If the
@@ -23,8 +23,13 @@ directly and renders a native, phone-shaped interface instead of wrapping a web 
   the app id, secret and the rest — each channel asks for exactly the fields the
   server maps), turn a channel on or off, or remove its credentials. Saving writes
   into your server and it restarts the gateway itself, so the channel comes up
-- **Gateway auto-start**, explained rather than named: whether your server brings each
-  profile's gateway up on boot, so channels answer without anyone opening Studio
+- **Settings is a table of contents**, not a wall: server and account, active profile,
+  agent, channels, this device, about — each opens its own screen, the way Studio
+  groups its own settings into tabs
+- **Agent settings**: max turns, gateway timeout, restart drain timeout, tool
+  enforcement, and **gateway auto-start where Studio keeps it** — including the
+  profile policy, so a server with several profiles can start only the ones that
+  actually answer on a channel
 - **The system back button behaves**: it walks back through the app — a conversation,
   a room, settings, the groups tab — and only closes the app from the chat list
 - **Confirmation before anything you cannot undo**: signing out and restarting a

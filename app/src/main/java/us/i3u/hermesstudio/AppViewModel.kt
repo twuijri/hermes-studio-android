@@ -11,7 +11,13 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-enum class Screen { Loading, Onboarding, Login, Chats, Groups, Conversation, Room, Profiles, Settings, Channels, Channel }
+enum class Screen {
+    Loading, Onboarding, Login, Chats, Groups, Conversation, Room, Profiles,
+    Settings, SettingsGroup, Channels, Channel,
+}
+
+/** Settings is a short list of these; each opens its own screen. */
+enum class SettingsGroup { Server, Profile, Agent, Device, About }
 
 /** The two list tabs, mirroring Studio's chat / group-chat switch. */
 enum class Tab { Chats, Groups }
@@ -68,6 +74,9 @@ data class UiState(
     val serverConfig: ServerConfig? = null,
     /** The channel whose settings are open, if any. */
     val openChannel: String? = null,
+    val openGroup: SettingsGroup? = null,
+    val agentSettings: AgentSettings? = null,
+    val autoStart: AutoStartPolicy? = null,
     val notice: String? = null,
 )
 
@@ -734,14 +743,56 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ── settings ──────────────────────────────────────────────────────────
 
-    fun openSettings() {
-        _state.update { it.copy(screen = Screen.Settings, error = null, notice = null) }
-        loadModels()
+    // ── settings groups ───────────────────────────────────────────────────
+
+    fun openSettingsGroup(group: SettingsGroup) {
+        _state.update { it.copy(screen = Screen.SettingsGroup, openGroup = group, error = null, notice = null) }
+        if (group == SettingsGroup.Agent) loadAgentSettings()
+        if (group == SettingsGroup.Profile) loadModels()
+    }
+
+    private fun loadAgentSettings() {
         val profile = _state.value.activeProfile.ifBlank { "default" }
         viewModelScope.launch {
-            runCatching { withContext(Dispatchers.IO) { api.serverConfig(profile) } }
-                .onSuccess { config ->
-                    _state.update { it.copy(serverConfig = config, defaultModel = config.defaultModel) }
+            runCatching {
+                withContext(Dispatchers.IO) { api.agentSettings(profile) to api.autoStartPolicy() }
+            }.onSuccess { (agent, policy) ->
+                _state.update { it.copy(agentSettings = agent, autoStart = policy) }
+            }.onFailure { failure -> _state.update { it.copy(error = failure.readableMessage(localized)) } }
+        }
+    }
+
+    /** Writes one agent knob; the server keeps the rest of the section as it is. */
+    fun setAgentValue(key: String, value: Any) {
+        val profile = _state.value.activeProfile.ifBlank { "default" }
+        _state.update { it.copy(savingSetting = true, error = null, notice = null) }
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    api.updateConfigSection(profile, "agent", org.json.JSONObject().put(key, value))
+                }
+            }.onSuccess {
+                _state.update { it.copy(savingSetting = false, notice = str(R.string.notice_saved)) }
+                loadAgentSettings()
+            }.onFailure { failure ->
+                _state.update { it.copy(savingSetting = false, error = failure.readableMessage(localized)) }
+            }
+        }
+    }
+
+    fun setAutoStart(policy: AutoStartPolicy) {
+        val previous = _state.value.autoStart
+        _state.update { it.copy(autoStart = policy, savingSetting = true, error = null, notice = null) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.setAutoStartPolicy(policy) } }
+                .onSuccess {
+                    _state.update { it.copy(savingSetting = false, notice = str(R.string.notice_saved)) }
+                    loadAgentSettings()
+                }
+                .onFailure { failure ->
+                    _state.update {
+                        it.copy(savingSetting = false, autoStart = previous, error = failure.readableMessage(localized))
+                    }
                 }
         }
     }
@@ -750,6 +801,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun openChannels() {
         _state.update { it.copy(screen = Screen.Channels, error = null, notice = null) }
+        refreshServerConfig()
+    }
+
+    /** Settings itself only needs the channel counts and the default model. */
+    fun openSettings() {
+        _state.update { it.copy(screen = Screen.Settings, error = null, notice = null, openGroup = null) }
         refreshServerConfig()
     }
 
@@ -907,7 +964,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { state ->
             val target = when (state.screen) {
                 Screen.Channel -> Screen.Channels
-                Screen.Channels -> Screen.Settings
+                Screen.Channels, Screen.SettingsGroup -> Screen.Settings
                 else -> if (state.tab == Tab.Groups) Screen.Groups else Screen.Chats
             }
             state.copy(screen = target, error = null)

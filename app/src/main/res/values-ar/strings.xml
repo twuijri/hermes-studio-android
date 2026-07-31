@@ -182,6 +182,34 @@
     <string name="notice_channel_cleared">حُذفت بيانات %1$s</string>
     <string name="settings_auto_start_note">عند تفعيله يشغّل سيرفرك بوابة كل بروفايل عند الإقلاع، فترد القنوات دون أن يفتح أحد الاستديو.</string>
 
+    <string name="settings_group_server">السيرفر والحساب</string>
+    <string name="settings_group_server_note">العنوان والمستخدم وتسجيل الخروج</string>
+    <string name="settings_group_profile">البروفايل النشط</string>
+    <string name="settings_group_profile_note">الوكيل الذي تتحدث معه المحادثات الجديدة وموديله الافتراضي</string>
+    <string name="settings_group_agent">الوكيل</string>
+    <string name="settings_group_agent_note">حدود الجولات والمهل واستخدام الأدوات وتشغيل البوابة</string>
+    <string name="settings_group_channels_note">تيليقرام وديسكورد وسلاك وغيرها</string>
+    <string name="settings_group_device">هذا الجهاز</string>
+    <string name="settings_group_device_note">اللغة وشعار التطبيق وقوة التفكير</string>
+    <string name="settings_group_about_note">الإصدار والاعتمادات</string>
+    <string name="agent_max_turns">أقصى عدد جولات</string>
+    <string name="agent_max_turns_note">جولات التفاعل في المحادثة الواحدة</string>
+    <string name="agent_gateway_timeout">مهلة البوابة</string>
+    <string name="agent_gateway_timeout_note">مهلة الخمول بالثواني، و0 تعني بلا حد</string>
+    <string name="agent_drain_timeout">مهلة الإنهاء قبل إعادة التشغيل</string>
+    <string name="agent_drain_timeout_note">ثوانٍ تُمنح للعمل الجاري قبل إعادة التشغيل</string>
+    <string name="agent_tool_enforcement">إلزام استخدام الأدوات</string>
+    <string name="agent_tool_auto">تلقائي</string>
+    <string name="agent_tool_always">دائمًا</string>
+    <string name="agent_tool_never">أبدًا</string>
+    <string name="agent_autostart_title">تشغيل البوابات مع السيرفر</string>
+    <string name="agent_autostart_note">أي بوابات البروفايلات يشغّلها سيرفرك عند إقلاعه. بدونها تبقى القناة صامتة بعد إعادة التشغيل حتى يشغّلها أحد.</string>
+    <string name="agent_policy">سياسة البروفايلات</string>
+    <string name="agent_policy_all">كل البروفايلات المكتشفة</string>
+    <string name="agent_policy_include">البروفايلات التي أختارها فقط</string>
+    <string name="agent_policy_profiles">البروفايلات التي تُشغَّل</string>
+    <string name="agent_unset">افتراضي السيرفر</string>
+
     <!-- تأكيدات قبل ما لا يمكن التراجع عنه -->
     <string name="confirm_sign_out_title">تسجيل الخروج؟</string>
     <string name="confirm_sign_out_body">سيُحذف الرمز المحفوظ على هذا الجهاز وستحتاج إلى تسجيل الدخول من جديد. لا يتغيّر شيء على سيرفرك.</string>

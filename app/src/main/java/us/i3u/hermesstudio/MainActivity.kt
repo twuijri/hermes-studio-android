@@ -143,7 +143,7 @@ private fun App(viewModel: AppViewModel = viewModel()) {
     // back to. Only the two root lists let it fall through and close the app.
     when (state.screen) {
         Screen.Conversation, Screen.Room, Screen.Profiles, Screen.Settings,
-        Screen.Channels, Screen.Channel,
+        Screen.SettingsGroup, Screen.Channels, Screen.Channel,
         -> BackHandler { viewModel.back() }
         Screen.Groups -> BackHandler { viewModel.showTab(Tab.Chats) }
         else -> Unit
@@ -156,6 +156,7 @@ private fun App(viewModel: AppViewModel = viewModel()) {
             onDone = { viewModel.finishOnboarding() },
         )
         Screen.Settings -> SettingsScreen(state, viewModel)
+        Screen.SettingsGroup -> SettingsGroupScreen(state, viewModel)
         Screen.Channels -> ChannelsScreen(state, viewModel)
         Screen.Channel -> ChannelScreen(state, viewModel)
         Screen.Login -> LoginScreen(state, viewModel)
@@ -1607,65 +1608,17 @@ private fun LanguageAction(state: UiState, viewModel: AppViewModel) {
     }
 }
 
+/**
+ * Settings is a table of contents, not a wall.
+ *
+ * Studio groups its own settings into tabs; a phone has no room for eleven
+ * tabs, so each group opens its own screen and this list stays short enough to
+ * take in at a glance.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
-    var modelSheet by remember { mutableStateOf(false) }
-    var languageSheet by remember { mutableStateOf(false) }
-    var confirm by remember { mutableStateOf<ConfirmAction?>(null) }
-    val profile = state.activeProfile.ifBlank { "default" }
-    val context = LocalContext.current
-    val language = APP_LANGUAGES.firstOrNull { it.tag == state.language } ?: APP_LANGUAGES.first()
-
-    val pickLogo = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri ?: return@rememberLauncherForActivityResult
-        val bytes = runCatching {
-            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-        }.getOrNull()
-        if (bytes != null && bytes.isNotEmpty()) viewModel.setAppLogo(bytes)
-    }
-
-    if (modelSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { modelSheet = false },
-            sheetState = rememberModalBottomSheetState(),
-        ) {
-            PickerSheet(
-                title = stringResource(R.string.settings_default_model_title, profile),
-                loading = state.loadingModels,
-                rows = state.models.map { option ->
-                    PickerRow(
-                        label = option.id,
-                        detail = option.provider,
-                        selected = option.id == state.defaultModel,
-                    ) {
-                        viewModel.setDefaultModel(option)
-                        modelSheet = false
-                    }
-                },
-            )
-        }
-    }
-
-    if (languageSheet) LanguageSheet(state, viewModel) { languageSheet = false }
-
-    when (confirm) {
-        ConfirmAction.SignOut -> ConfirmDialog(
-            title = stringResource(R.string.confirm_sign_out_title),
-            body = stringResource(R.string.confirm_sign_out_body),
-            action = stringResource(R.string.action_sign_out),
-            onConfirm = { viewModel.signOut() },
-            onDismiss = { confirm = null },
-        )
-        ConfirmAction.RestartGateway -> ConfirmDialog(
-            title = stringResource(R.string.confirm_restart_title),
-            body = stringResource(R.string.confirm_restart_body, profile),
-            action = stringResource(R.string.settings_restart_gateway),
-            onConfirm = { viewModel.restartGateway() },
-            onDismiss = { confirm = null },
-        )
-        null -> Unit
-    }
+    val channels = state.serverConfig?.channels.orEmpty()
 
     Scaffold(
         topBar = {
@@ -1677,155 +1630,431 @@ private fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
         },
     ) { padding ->
         Column(
+            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()),
+        ) {
+            state.error?.let { ErrorNote(it) { viewModel.dismissError() } }
+            state.notice?.let { NoticeNote(it) { viewModel.dismissNotice() } }
+
+            SettingsRow(
+                icon = Icons.Filled.Dns,
+                label = stringResource(R.string.settings_group_server),
+                value = state.baseUrl.ifBlank { stringResource(R.string.settings_group_server_note) },
+                onClick = { viewModel.openSettingsGroup(SettingsGroup.Server) },
+            )
+            SettingsRow(
+                icon = Icons.Filled.Person,
+                label = stringResource(R.string.settings_group_profile),
+                value = state.activeProfile.ifBlank { stringResource(R.string.settings_group_profile_note) },
+                onClick = { viewModel.openSettingsGroup(SettingsGroup.Profile) },
+            )
+            SettingsRow(
+                icon = Icons.Filled.Psychology,
+                label = stringResource(R.string.settings_group_agent),
+                value = stringResource(R.string.settings_group_agent_note),
+                onClick = { viewModel.openSettingsGroup(SettingsGroup.Agent) },
+            )
+            SettingsRow(
+                icon = Icons.Filled.Hub,
+                label = stringResource(R.string.settings_channels),
+                value = if (channels.isEmpty()) {
+                    stringResource(R.string.settings_group_channels_note)
+                } else {
+                    stringResource(
+                        R.string.settings_channels_summary,
+                        channels.count { it.configured },
+                        channels.size.coerceAtLeast(CHANNELS.size),
+                    )
+                },
+                onClick = { viewModel.openChannels() },
+            )
+            SettingsRow(
+                icon = Icons.Filled.Language,
+                label = stringResource(R.string.settings_group_device),
+                value = stringResource(R.string.settings_group_device_note),
+                onClick = { viewModel.openSettingsGroup(SettingsGroup.Device) },
+            )
+            SettingsRow(
+                icon = Icons.AutoMirrored.Filled.Chat,
+                label = stringResource(R.string.settings_section_about),
+                value = stringResource(R.string.settings_group_about_note),
+                onClick = { viewModel.openSettingsGroup(SettingsGroup.About) },
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SettingsGroupScreen(state: UiState, viewModel: AppViewModel) {
+    val group = state.openGroup ?: return
+    val title = stringResource(
+        when (group) {
+            SettingsGroup.Server -> R.string.settings_group_server
+            SettingsGroup.Profile -> R.string.settings_group_profile
+            SettingsGroup.Agent -> R.string.settings_group_agent
+            SettingsGroup.Device -> R.string.settings_group_device
+            SettingsGroup.About -> R.string.settings_section_about
+        },
+    )
+
+    Scaffold(
+        topBar = { StudioTopBar(title = title, onBack = { viewModel.back() }) },
+    ) { padding ->
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .verticalScroll(rememberScrollState()),
+                .verticalScroll(rememberScrollState())
+                .imePadding(),
         ) {
             if (state.savingSetting) LoadingRow()
             state.error?.let { ErrorNote(it) { viewModel.dismissError() } }
             state.notice?.let { NoticeNote(it) { viewModel.dismissNotice() } }
 
-            SettingsSection(stringResource(R.string.settings_section_server))
-            SettingsRow(
-                icon = Icons.Filled.Dns,
-                label = stringResource(R.string.settings_address),
-                value = state.baseUrl.ifBlank { stringResource(R.string.settings_address_missing) },
-            )
-            SettingsRow(
-                icon = Icons.Filled.Person,
-                label = stringResource(R.string.settings_account),
-                value = state.account ?: stringResource(R.string.settings_account_unknown),
-            )
-
-            SettingsSection(stringResource(R.string.settings_section_profile))
-            SettingsRow(
-                icon = Icons.Filled.Person,
-                label = stringResource(R.string.settings_profile),
-                value = profile,
-                onClick = { viewModel.show(Screen.Profiles) },
-            )
-            SettingsRow(
-                icon = Icons.Filled.WbSunny,
-                label = stringResource(R.string.settings_default_model),
-                value = state.defaultModel ?: stringResource(R.string.settings_default_model_server),
-                onClick = {
-                    viewModel.loadModels()
-                    modelSheet = true
-                },
-            )
-            SettingsRow(
-                icon = Icons.Filled.RestartAlt,
-                label = stringResource(R.string.settings_restart_gateway),
-                value = stringResource(R.string.settings_restart_gateway_note),
-                onClick = { confirm = ConfirmAction.RestartGateway },
-            )
-
-            SettingsRow(
-                icon = Icons.Filled.PowerSettingsNew,
-                label = stringResource(R.string.settings_auto_start),
-                value = stringResource(
-                    if (state.serverConfig?.gatewayAutoStart == true) {
-                        R.string.settings_auto_start_on
-                    } else {
-                        R.string.settings_auto_start_off
-                    },
-                ),
-                trailing = {
-                    Switch(
-                        checked = state.serverConfig?.gatewayAutoStart == true,
-                        onCheckedChange = { viewModel.setGatewayAutoStart(it) },
-                    )
-                },
-            )
-            Text(
-                stringResource(R.string.settings_auto_start_note),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-            )
-
-            val channels = state.serverConfig?.channels.orEmpty()
-            SettingsRow(
-                icon = Icons.Filled.Hub,
-                label = stringResource(R.string.settings_channels),
-                value = stringResource(
-                    R.string.settings_channels_summary,
-                    channels.count { it.configured },
-                    channels.size.coerceAtLeast(CHANNELS.size),
-                ),
-                onClick = { viewModel.openChannels() },
-            )
-
-            SettingsSection(stringResource(R.string.settings_section_appearance))
-            LogoRow(
-                value = stringResource(
-                    when {
-                        AppLogo.isCustom -> R.string.settings_logo_custom
-                        AppLogo.image != null -> R.string.settings_logo_server
-                        else -> R.string.settings_logo_missing
-                    },
-                ),
-                onClick = { pickLogo.launch("image/*") },
-            )
-            if (AppLogo.isCustom) {
-                SettingsRow(
-                    icon = Icons.Filled.Refresh,
-                    label = stringResource(R.string.settings_logo_reset),
-                    value = stringResource(R.string.settings_logo_reset_note),
-                    onClick = { viewModel.resetAppLogo() },
-                )
+            when (group) {
+                SettingsGroup.Server -> ServerSettings(state, viewModel)
+                SettingsGroup.Profile -> ProfileSettings(state, viewModel)
+                SettingsGroup.Agent -> AgentSettings(state, viewModel)
+                SettingsGroup.Device -> DeviceSettings(state, viewModel)
+                SettingsGroup.About -> AboutSettings()
             }
-            Text(
-                stringResource(R.string.settings_logo_note),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-            )
-
-            SettingsRow(
-                icon = Icons.Filled.Language,
-                label = stringResource(R.string.settings_language),
-                value = AppLocale.labelFor(context, language),
-                onClick = { languageSheet = true },
-            )
-
-            SettingsSection(stringResource(R.string.settings_section_device))
-            SettingsRow(
-                icon = Icons.Filled.Psychology,
-                label = stringResource(R.string.settings_reasoning),
-                value = reasoningLabel(state.reasoningEffort),
-            )
-            Text(
-                stringResource(R.string.settings_reasoning_note),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-            )
-
-            SettingsSection(stringResource(R.string.settings_section_account))
-            SettingsRow(
-                icon = Icons.AutoMirrored.Filled.Logout,
-                label = stringResource(R.string.action_sign_out),
-                value = stringResource(R.string.settings_sign_out_note),
-                onClick = { confirm = ConfirmAction.SignOut },
-            )
-
-            SettingsSection(stringResource(R.string.settings_section_about))
-            SettingsRow(
-                icon = Icons.AutoMirrored.Filled.Chat,
-                label = stringResource(R.string.settings_version),
-                value = BuildConfig.VERSION_NAME,
-            )
-            Text(
-                stringResource(R.string.settings_about_note),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-            )
         }
     }
 }
+
+@Composable
+private fun ServerSettings(state: UiState, viewModel: AppViewModel) {
+    var confirmSignOut by remember { mutableStateOf(false) }
+    if (confirmSignOut) {
+        ConfirmDialog(
+            title = stringResource(R.string.confirm_sign_out_title),
+            body = stringResource(R.string.confirm_sign_out_body),
+            action = stringResource(R.string.action_sign_out),
+            onConfirm = { viewModel.signOut() },
+            onDismiss = { confirmSignOut = false },
+        )
+    }
+
+    SettingsRow(
+        icon = Icons.Filled.Dns,
+        label = stringResource(R.string.settings_address),
+        value = state.baseUrl.ifBlank { stringResource(R.string.settings_address_missing) },
+    )
+    SettingsRow(
+        icon = Icons.Filled.Person,
+        label = stringResource(R.string.settings_account),
+        value = state.account ?: stringResource(R.string.settings_account_unknown),
+    )
+    SettingsRow(
+        icon = Icons.AutoMirrored.Filled.Logout,
+        label = stringResource(R.string.action_sign_out),
+        value = stringResource(R.string.settings_sign_out_note),
+        onClick = { confirmSignOut = true },
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ProfileSettings(state: UiState, viewModel: AppViewModel) {
+    var modelSheet by remember { mutableStateOf(false) }
+    var confirmRestart by remember { mutableStateOf(false) }
+    val profile = state.activeProfile.ifBlank { "default" }
+
+    if (modelSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { modelSheet = false },
+            sheetState = rememberModalBottomSheetState(),
+        ) {
+            PickerSheet(
+                title = stringResource(R.string.settings_default_model_title, profile),
+                loading = state.loadingModels,
+                rows = state.models.map { option ->
+                    PickerRow(label = option.id, detail = option.provider, selected = option.id == state.defaultModel) {
+                        viewModel.setDefaultModel(option)
+                        modelSheet = false
+                    }
+                },
+            )
+        }
+    }
+    if (confirmRestart) {
+        ConfirmDialog(
+            title = stringResource(R.string.confirm_restart_title),
+            body = stringResource(R.string.confirm_restart_body, profile),
+            action = stringResource(R.string.settings_restart_gateway),
+            onConfirm = { viewModel.restartGateway() },
+            onDismiss = { confirmRestart = false },
+        )
+    }
+
+    SettingsRow(
+        icon = Icons.Filled.Person,
+        label = stringResource(R.string.settings_profile),
+        value = profile,
+        onClick = { viewModel.show(Screen.Profiles) },
+    )
+    SettingsRow(
+        icon = Icons.Filled.WbSunny,
+        label = stringResource(R.string.settings_default_model),
+        value = state.defaultModel ?: stringResource(R.string.settings_default_model_server),
+        onClick = {
+            viewModel.loadModels()
+            modelSheet = true
+        },
+    )
+    SettingsRow(
+        icon = Icons.Filled.RestartAlt,
+        label = stringResource(R.string.settings_restart_gateway),
+        value = stringResource(R.string.settings_restart_gateway_note),
+        onClick = { confirmRestart = true },
+    )
+}
+
+/** The agent knobs, with gateway auto-start where Studio keeps it. */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun AgentSettings(state: UiState, viewModel: AppViewModel) {
+    val agent = state.agentSettings
+    val policy = state.autoStart
+    var editing by remember { mutableStateOf<String?>(null) }
+    var enforcementSheet by remember { mutableStateOf(false) }
+    var policySheet by remember { mutableStateOf(false) }
+
+    editing?.let { key ->
+        val current = when (key) {
+            "max_turns" -> agent?.maxTurns
+            "gateway_timeout" -> agent?.gatewayTimeout
+            else -> agent?.restartDrainTimeout
+        }
+        TextPromptDialog(
+            title = stringResource(
+                when (key) {
+                    "max_turns" -> R.string.agent_max_turns
+                    "gateway_timeout" -> R.string.agent_gateway_timeout
+                    else -> R.string.agent_drain_timeout
+                },
+            ),
+            initial = current?.toString().orEmpty(),
+            hint = "",
+            action = stringResource(R.string.action_save),
+            onConfirm = { typed -> typed.toIntOrNull()?.let { viewModel.setAgentValue(key, it) } },
+            onDismiss = { editing = null },
+        )
+    }
+    if (enforcementSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { enforcementSheet = false },
+            sheetState = rememberModalBottomSheetState(),
+        ) {
+            PickerSheet(
+                title = stringResource(R.string.agent_tool_enforcement),
+                loading = false,
+                rows = TOOL_ENFORCEMENT.map { (value, label) ->
+                    PickerRow(label = stringResource(label), detail = null, selected = value == agent?.toolEnforcement) {
+                        enforcementSheet = false
+                        viewModel.setAgentValue("tool_use_enforcement", value)
+                    }
+                },
+            )
+        }
+    }
+    if (policySheet && policy != null) {
+        ModalBottomSheet(
+            onDismissRequest = { policySheet = false },
+            sheetState = rememberModalBottomSheetState(),
+        ) {
+            PickerSheet(
+                title = stringResource(R.string.agent_policy),
+                loading = false,
+                rows = listOf(
+                    PickerRow(
+                        label = stringResource(R.string.agent_policy_all),
+                        detail = null,
+                        selected = policy.include == null,
+                    ) {
+                        policySheet = false
+                        viewModel.setAutoStart(policy.copy(include = null))
+                    },
+                    PickerRow(
+                        label = stringResource(R.string.agent_policy_include),
+                        detail = null,
+                        selected = policy.include != null,
+                    ) {
+                        policySheet = false
+                        viewModel.setAutoStart(policy.copy(include = policy.include ?: listOf(state.activeProfile)))
+                    },
+                ),
+            )
+        }
+    }
+
+    SettingsRow(
+        icon = Icons.Filled.Psychology,
+        label = stringResource(R.string.agent_max_turns),
+        value = agent?.maxTurns?.toString() ?: stringResource(R.string.agent_unset),
+        onClick = { editing = "max_turns" },
+    )
+    SettingsRow(
+        icon = Icons.Filled.RestartAlt,
+        label = stringResource(R.string.agent_gateway_timeout),
+        value = agent?.gatewayTimeout?.toString() ?: stringResource(R.string.agent_unset),
+        onClick = { editing = "gateway_timeout" },
+    )
+    SettingsRow(
+        icon = Icons.Filled.RestartAlt,
+        label = stringResource(R.string.agent_drain_timeout),
+        value = agent?.restartDrainTimeout?.toString() ?: stringResource(R.string.agent_unset),
+        onClick = { editing = "restart_drain_timeout" },
+    )
+    SettingsRow(
+        icon = Icons.Filled.Check,
+        label = stringResource(R.string.agent_tool_enforcement),
+        value = stringResource(
+            TOOL_ENFORCEMENT.firstOrNull { it.first == agent?.toolEnforcement }?.second ?: R.string.agent_tool_auto,
+        ),
+        onClick = { enforcementSheet = true },
+    )
+
+    SettingsSection(stringResource(R.string.agent_autostart_title))
+    Text(
+        stringResource(R.string.agent_autostart_note),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+    )
+    SettingsRow(
+        icon = Icons.Filled.PowerSettingsNew,
+        label = stringResource(R.string.settings_auto_start),
+        value = stringResource(
+            if (policy?.enabled == true) R.string.settings_auto_start_on else R.string.settings_auto_start_off,
+        ),
+        trailing = {
+            Switch(
+                checked = policy?.enabled == true,
+                onCheckedChange = { on -> policy?.let { viewModel.setAutoStart(it.copy(enabled = on)) } },
+            )
+        },
+    )
+    if (policy?.enabled == true) {
+        SettingsRow(
+            icon = Icons.Filled.Person,
+            label = stringResource(R.string.agent_policy),
+            value = stringResource(
+                if (policy.include == null) R.string.agent_policy_all else R.string.agent_policy_include,
+            ),
+            onClick = { policySheet = true },
+        )
+        policy.include?.let { included ->
+            Text(
+                stringResource(R.string.agent_policy_profiles),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+            )
+            FlowRow(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                state.profiles.forEach { profile ->
+                    val chosen = profile.name in included
+                    AssistChip(
+                        onClick = {
+                            val next = if (chosen) included - profile.name else included + profile.name
+                            viewModel.setAutoStart(policy.copy(include = next))
+                        },
+                        label = { Text(profile.name) },
+                        leadingIcon = if (chosen) {
+                            { Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                        } else {
+                            null
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DeviceSettings(state: UiState, viewModel: AppViewModel) {
+    val context = LocalContext.current
+    var languageSheet by remember { mutableStateOf(false) }
+    val language = APP_LANGUAGES.firstOrNull { it.tag == state.language } ?: APP_LANGUAGES.first()
+
+    val pickLogo = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        val bytes = runCatching {
+            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        }.getOrNull()
+        if (bytes != null && bytes.isNotEmpty()) viewModel.setAppLogo(bytes)
+    }
+
+    if (languageSheet) LanguageSheet(state, viewModel) { languageSheet = false }
+
+    SettingsRow(
+        icon = Icons.Filled.Language,
+        label = stringResource(R.string.settings_language),
+        value = AppLocale.labelFor(context, language),
+        onClick = { languageSheet = true },
+    )
+    LogoRow(
+        value = stringResource(
+            when {
+                AppLogo.isCustom -> R.string.settings_logo_custom
+                AppLogo.image != null -> R.string.settings_logo_server
+                else -> R.string.settings_logo_missing
+            },
+        ),
+        onClick = { pickLogo.launch("image/*") },
+    )
+    if (AppLogo.isCustom) {
+        SettingsRow(
+            icon = Icons.Filled.Refresh,
+            label = stringResource(R.string.settings_logo_reset),
+            value = stringResource(R.string.settings_logo_reset_note),
+            onClick = { viewModel.resetAppLogo() },
+        )
+    }
+    Text(
+        stringResource(R.string.settings_logo_note),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+    )
+    SettingsRow(
+        icon = Icons.Filled.Psychology,
+        label = stringResource(R.string.settings_reasoning),
+        value = reasoningLabel(state.reasoningEffort),
+    )
+    Text(
+        stringResource(R.string.settings_reasoning_note),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+    )
+}
+
+@Composable
+private fun AboutSettings() {
+    SettingsRow(
+        icon = Icons.AutoMirrored.Filled.Chat,
+        label = stringResource(R.string.settings_version),
+        value = BuildConfig.VERSION_NAME,
+    )
+    Text(
+        stringResource(R.string.settings_about_note),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+    )
+}
+
+private val TOOL_ENFORCEMENT = listOf(
+    "auto" to R.string.agent_tool_auto,
+    "always" to R.string.agent_tool_always,
+    "never" to R.string.agent_tool_never,
+)
 
 /** Every channel Hermes can speak on, and whether it is ready. */
 @OptIn(ExperimentalMaterial3Api::class)
