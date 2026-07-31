@@ -5,6 +5,7 @@
 -->
 <resources>
     <string name="app_name">Hermes Studio</string>
+    <string name="launcher_name">H Studio</string>
 
     <!-- إجراءات وتسميات مشتركة -->
     <string name="action_back">رجوع</string>

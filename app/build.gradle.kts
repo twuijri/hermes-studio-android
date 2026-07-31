@@ -21,8 +21,8 @@ android {
         applicationId = "us.i3u.hermesstudio"
         minSdk = 26
         targetSdk = 34
-        versionCode = 21
-        versionName = "0.13.2"
+        versionCode = 22
+        versionName = "0.13.3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
