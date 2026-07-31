@@ -83,6 +83,11 @@
     <string name="conversation_your_agent">your agent</string>
     <string name="conversation_thinking">Thinking…</string>
     <string name="conversation_tool">Running %1$s…</string>
+    <string name="thinking_title">Thinking</string>
+    <string name="thinking_expand">Show thinking details</string>
+    <string name="thinking_collapse">Hide thinking details</string>
+    <string name="tool_status_done">Completed</string>
+    <string name="tool_status_failed">Failed</string>
     <string name="conversation_stop">Stop</string>
     <string name="reasoning_show">Reasoning</string>
 

@@ -13,13 +13,23 @@ import java.net.URLEncoder
 
 /** What a run tells us while it is happening. */
 sealed interface RunEvent {
+    data class Started(val occurredAtMillis: Long) : RunEvent
     data class Text(val delta: String) : RunEvent
     data class Reasoning(val delta: String) : RunEvent
-    data class Tool(val name: String) : RunEvent
+    data class Tool(
+        val id: String,
+        val name: String,
+        val detail: String?,
+        val status: ToolRunStatus,
+        val durationSeconds: Double?,
+        val occurredAtMillis: Long,
+    ) : RunEvent
     data class Done(val output: String, val reasoning: String) : RunEvent
     data class RequiresAction(val kind: RequiredAction) : RunEvent
     data class Failed(val error: String, val retryableTransport: Boolean) : RunEvent
 }
+
+enum class ToolRunStatus { Running, Done, Error }
 
 enum class RequiredAction { Approval, Clarification }
 
@@ -78,13 +88,15 @@ class ChatSocket(
         var runStarted = false
         var terminal = false
 
-        fun text(args: Array<out Any?>, key: String): String =
-            (args.firstOrNull() as? JSONObject)?.optString(key).orEmpty()
+        fun eventPayload(args: Array<out Any?>): JSONObject? = args.firstOrNull() as? JSONObject
 
         live.on(Socket.EVENT_CONNECT) { live.emit("run", payload) }
-        live.on("run.started") { runStarted = true }
+        live.on("run.started") {
+            runStarted = true
+            trySend(RunEvent.Started(System.currentTimeMillis()))
+        }
         live.on("message.delta") { args ->
-            val delta = text(args, "delta")
+            val delta = eventPayload(args).firstString("delta", "text")
             if (delta.isNotEmpty()) {
                 runStarted = true
                 trySend(RunEvent.Text(delta))
@@ -93,7 +105,7 @@ class ChatSocket(
         // Some models report thinking under one name, some under the other.
         listOf("reasoning.delta", "thinking.delta").forEach { event ->
             live.on(event) { args ->
-                val delta = text(args, "delta")
+                val delta = eventPayload(args).firstString("delta", "text")
                 if (delta.isNotEmpty()) {
                     runStarted = true
                     trySend(RunEvent.Reasoning(delta))
@@ -102,10 +114,27 @@ class ChatSocket(
         }
         live.on("tool.started") { args ->
             runStarted = true
-            val name = (args.firstOrNull() as? JSONObject)?.let {
-                it.optString("name").ifBlank { it.optString("tool") }
-            }.orEmpty()
-            if (name.isNotBlank()) trySend(RunEvent.Tool(name))
+            parseToolEvent(
+                event = eventPayload(args),
+                status = ToolRunStatus.Running,
+                occurredAtMillis = System.currentTimeMillis(),
+            )?.let { trySend(it) }
+        }
+        live.on("tool.completed") { args ->
+            runStarted = true
+            parseToolEvent(
+                event = eventPayload(args),
+                status = ToolRunStatus.Done,
+                occurredAtMillis = System.currentTimeMillis(),
+            )?.let { trySend(it) }
+        }
+        live.on("tool.failed") { args ->
+            runStarted = true
+            parseToolEvent(
+                event = eventPayload(args),
+                status = ToolRunStatus.Error,
+                occurredAtMillis = System.currentTimeMillis(),
+            )?.let { trySend(it) }
         }
         live.on("run.completed") { args ->
             terminal = true
@@ -177,4 +206,66 @@ class ChatSocket(
                 }
             }
         }
+}
+
+/** Normalizes tool payloads emitted by both current and older Studio bridges. */
+internal fun parseToolEvent(
+    event: JSONObject?,
+    status: ToolRunStatus,
+    occurredAtMillis: Long,
+): RunEvent.Tool? {
+    event ?: return null
+    val id = event.firstString("tool_call_id", "call_id", "id")
+    val name = event.firstString("tool", "name", "tool_name", "function_name")
+    if (id.isBlank() && name.isBlank()) return null
+
+    val duration = listOf("duration_seconds", "duration")
+        .firstNotNullOfOrNull { key ->
+            if (!event.has(key) || event.isNull(key)) return@firstNotNullOfOrNull null
+            event.optDouble(key).takeIf { it.isFinite() && it >= 0.0 }
+        }
+    val reportedError = event.opt("error").let { value ->
+        when (value) {
+            is Boolean -> value
+            is Number -> value.toInt() != 0
+            is String -> value.isNotBlank() && !value.equals("false", ignoreCase = true)
+            else -> false
+        }
+    }
+
+    return RunEvent.Tool(
+        id = id,
+        name = name.ifBlank { "tool" },
+        detail = event.toolDetail(),
+        status = if (status == ToolRunStatus.Done && reportedError) ToolRunStatus.Error else status,
+        durationSeconds = duration,
+        occurredAtMillis = occurredAtMillis,
+    )
+}
+
+private fun JSONObject?.firstString(vararg keys: String): String {
+    if (this == null) return ""
+    return keys.firstNotNullOfOrNull { key ->
+        if (!has(key) || isNull(key)) return@firstNotNullOfOrNull null
+        optString(key).trim().takeIf { it.isNotBlank() }
+    }.orEmpty()
+}
+
+private fun JSONObject.toolDetail(): String? {
+    firstString("preview", "detail").takeIf { it.isNotBlank() }?.let { return it.oneLine() }
+    val raw = listOf("arguments", "args", "function_args")
+        .firstNotNullOfOrNull { key -> opt(key).takeUnless { it == null || it == JSONObject.NULL } }
+        ?: return null
+    val selected = if (raw is JSONObject) {
+        listOf("command", "cmd", "path", "file_path", "query", "url", "prompt")
+            .firstNotNullOfOrNull { key -> raw.opt(key).takeUnless { it == null || it == JSONObject.NULL } }
+            ?: raw
+    } else {
+        raw
+    }
+    return selected.toString().oneLine().takeIf { it.isNotBlank() }
+}
+
+private fun String.oneLine(): String = replace(Regex("\\s+"), " ").trim().let {
+    if (it.length <= 180) it else it.take(177) + "…"
 }

@@ -82,6 +82,11 @@
     <string name="conversation_your_agent">وكيلك</string>
     <string name="conversation_thinking">يفكر…</string>
     <string name="conversation_tool">ينفّذ %1$s…</string>
+    <string name="thinking_title">يفكّر</string>
+    <string name="thinking_expand">عرض تفاصيل التفكير</string>
+    <string name="thinking_collapse">إخفاء تفاصيل التفكير</string>
+    <string name="tool_status_done">اكتمل</string>
+    <string name="tool_status_failed">فشل</string>
     <string name="conversation_stop">إيقاف</string>
     <string name="reasoning_show">التفكير</string>
 

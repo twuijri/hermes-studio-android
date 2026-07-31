@@ -47,12 +47,15 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Rule
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Cable
 import androidx.compose.material.icons.filled.Compress
@@ -133,13 +136,17 @@ import androidx.compose.ui.res.stringResource
 import androidx.core.content.FileProvider
 import java.io.File
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.delay
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
 
@@ -807,7 +814,7 @@ private fun ConversationScreen(state: UiState, viewModel: AppViewModel) {
                 }
             }
 
-            if (state.sending) {
+            if (state.sending && state.lines.none { it.streaming }) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -841,20 +848,29 @@ private fun ConversationScreen(state: UiState, viewModel: AppViewModel) {
 @Composable
 private fun MessageBubble(line: ChatLine, profile: String? = null, avatar: AvatarSpec? = null) {
     val alignment = if (line.fromUser) Alignment.CenterEnd else Alignment.CenterStart
+    val hasThinking = !line.fromUser && (
+        line.streaming || line.reasoning?.isNotBlank() == true || line.tools.isNotEmpty()
+    )
     val container = when {
         line.isError -> MaterialTheme.colorScheme.errorContainer
         line.fromUser -> MaterialTheme.colorScheme.primaryContainer
         else -> MaterialTheme.colorScheme.surfaceVariant
     }
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = alignment) {
-        Row(verticalAlignment = Alignment.Bottom) {
+        Row(
+            modifier = if (hasThinking) Modifier.fillMaxWidth() else Modifier,
+            verticalAlignment = if (hasThinking) Alignment.Top else Alignment.Bottom,
+        ) {
             // The agent's picture rides with its own replies, the way Studio
             // shows it in the transcript.
             if (!line.fromUser && !profile.isNullOrBlank()) {
                 ProfileAvatar(profile, avatar, size = 26.dp)
                 Spacer(Modifier.width(8.dp))
             }
-            Card(colors = CardDefaults.cardColors(containerColor = container)) {
+            Card(
+                modifier = if (hasThinking) Modifier.weight(1f) else Modifier,
+                colors = CardDefaults.cardColors(containerColor = container),
+            ) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     line.sender?.let {
                         Text(
@@ -863,10 +879,8 @@ private fun MessageBubble(line: ChatLine, profile: String? = null, avatar: Avata
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                    if (hasThinking) ThinkingTimeline(line)
                     if (line.text.isNotBlank()) Text(text = line.text)
-                    line.reasoning?.takeIf { it.isNotBlank() }?.let { thinking ->
-                        ReasoningNote(thinking)
-                    }
                     val stamp = formatStamp(line.timestamp)
                     if (stamp.isNotBlank()) {
                         Text(
@@ -881,42 +895,194 @@ private fun MessageBubble(line: ChatLine, profile: String? = null, avatar: Avata
     }
 }
 
-/** The model's own account of how it got there, folded away until asked for. */
 @Composable
-private fun ReasoningNote(reasoning: String) {
-    var open by rememberSaveable { mutableStateOf(false) }
+private fun ThinkingTimeline(line: ChatLine) {
+    var expandedOverride by rememberSaveable(line.startedAtMillis) { mutableStateOf<Boolean?>(null) }
+    val hasDetails = line.tools.isNotEmpty() || !line.reasoning.isNullOrBlank()
+    val expanded = expandedOverride ?: line.streaming
+    val nowMillis = timelineNow(line)
+    val elapsed = line.startedAtMillis?.let { formatElapsed(nowMillis - it) }
+
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier.clickable { open = !open }.padding(vertical = 2.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(
+                    if (hasDetails) Modifier.clickable { expandedOverride = !expanded }
+                    else Modifier,
+                )
+                .padding(vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Icon(
-                Icons.Filled.Psychology,
-                contentDescription = null,
-                modifier = Modifier.size(14.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (line.streaming) {
+                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+            } else {
+                Icon(
+                    Icons.Filled.Psychology,
+                    contentDescription = null,
+                    modifier = Modifier.size(17.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Text(
-                stringResource(R.string.reasoning_show),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                stringResource(R.string.thinking_title),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
             )
-            Text(
-                if (open) "⌃" else "⌄",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            elapsed?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontFamily = FontFamily.Monospace,
+                        textDirection = TextDirection.Ltr,
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.weight(1f))
+            if (hasDetails) {
+                Icon(
+                    if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                    contentDescription = stringResource(
+                        if (expanded) R.string.thinking_collapse else R.string.thinking_expand,
+                    ),
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
-        if (open) {
-            Text(
-                reasoning,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
-            )
+        if (expanded) {
+            Column(
+                modifier = Modifier.padding(top = 7.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                line.tools.forEach { tool -> ToolStepRow(tool, nowMillis) }
+                line.reasoning?.takeIf { it.isNotBlank() }?.let { reasoning ->
+                    Surface(
+                        color = MaterialTheme.colorScheme.surface,
+                        shape = RoundedCornerShape(9.dp),
+                    ) {
+                        Text(
+                            reasoning,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 8.dp),
+                        )
+                    }
+                }
+            }
         }
     }
+}
+
+@Composable
+private fun ToolStepRow(tool: ChatToolStep, nowMillis: Long) {
+    val seconds = tool.durationSeconds ?: if (tool.status == ToolRunStatus.Running) {
+        (nowMillis - tool.startedAtMillis).coerceAtLeast(0) / 1000.0
+    } else {
+        null
+    }
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(9.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                Icons.Filled.Build,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    tool.name,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontFamily = FontFamily.Monospace,
+                        textDirection = TextDirection.Ltr,
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                tool.detail?.takeIf { it.isNotBlank() }?.let { detail ->
+                    Text(
+                        detail,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                            textDirection = TextDirection.Ltr,
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            seconds?.let {
+                Text(
+                    formatToolDuration(it),
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontFamily = FontFamily.Monospace,
+                        textDirection = TextDirection.Ltr,
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            when (tool.status) {
+                ToolRunStatus.Running -> CircularProgressIndicator(
+                    modifier = Modifier.size(15.dp),
+                    strokeWidth = 2.dp,
+                )
+                ToolRunStatus.Done -> Icon(
+                    Icons.Filled.Check,
+                    contentDescription = stringResource(R.string.tool_status_done),
+                    modifier = Modifier.size(17.dp),
+                    tint = androidx.compose.ui.graphics.Color(0xFF67C650),
+                )
+                ToolRunStatus.Error -> Icon(
+                    Icons.Filled.Close,
+                    contentDescription = stringResource(R.string.tool_status_failed),
+                    modifier = Modifier.size(17.dp),
+                    tint = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun timelineNow(line: ChatLine): Long {
+    var now by remember(line.startedAtMillis, line.finishedAtMillis) {
+        mutableStateOf(line.finishedAtMillis ?: System.currentTimeMillis())
+    }
+    LaunchedEffect(line.streaming, line.finishedAtMillis) {
+        if (!line.streaming) {
+            now = line.finishedAtMillis ?: System.currentTimeMillis()
+            return@LaunchedEffect
+        }
+        while (true) {
+            now = System.currentTimeMillis()
+            delay(1_000)
+        }
+    }
+    return line.finishedAtMillis ?: now
+}
+
+private fun formatElapsed(milliseconds: Long): String {
+    val totalSeconds = (milliseconds.coerceAtLeast(0) / 1000).toInt()
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return if (minutes == 0) "${seconds}s" else "${minutes}m${seconds.toString().padStart(2, '0')}s"
+}
+
+private fun formatToolDuration(seconds: Double): String = when {
+    seconds < 10 -> String.format(Locale.US, "%.1fs", seconds)
+    seconds < 60 -> "${seconds.toInt()}s"
+    else -> "${(seconds / 60).toInt()}m${(seconds.toInt() % 60).toString().padStart(2, '0')}s"
 }
 
 // ── profiles ─────────────────────────────────────────────────────────────

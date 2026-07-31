@@ -48,6 +48,20 @@ data class ChatLine(
     val reasoning: String? = null,
     /** True while the words are still arriving. */
     val streaming: Boolean = false,
+    /** Tool calls reported by Studio while this reply is being produced. */
+    val tools: List<ChatToolStep> = emptyList(),
+    /** Local timing keeps the live Thinking counter moving between events. */
+    val startedAtMillis: Long? = null,
+    val finishedAtMillis: Long? = null,
+)
+
+data class ChatToolStep(
+    val id: String,
+    val name: String,
+    val detail: String?,
+    val status: ToolRunStatus,
+    val startedAtMillis: Long,
+    val durationSeconds: Double? = null,
 )
 
 data class UiState(
@@ -455,6 +469,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             var answer = StringBuilder()
             var thinking = StringBuilder()
             var streamed = false
+            val runStartedAt = System.currentTimeMillis()
+
+            fun ensureStreamingReply(startedAtMillis: Long = runStartedAt) {
+                if (streamed) return
+                streamed = true
+                _state.update {
+                    it.copy(
+                        lines = it.lines + ChatLine(
+                            text = "",
+                            fromUser = false,
+                            streaming = true,
+                            startedAtMillis = startedAtMillis,
+                        ),
+                        activity = null,
+                    )
+                }
+            }
 
             runCatching {
                 chat.run(
@@ -468,24 +499,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 )
                     .collect { event ->
                         when (event) {
+                            is RunEvent.Started -> ensureStreamingReply(event.occurredAtMillis)
                             is RunEvent.Text -> {
                                 answer.append(event.delta)
-                                if (!streamed) {
-                                    streamed = true
-                                    _state.update {
-                                        it.copy(
-                                            lines = it.lines + ChatLine("", fromUser = false, streaming = true),
-                                            activity = null,
-                                        )
-                                    }
-                                }
+                                ensureStreamingReply()
                                 updateLastReply(answer.toString(), thinking.toString(), streaming = true)
                             }
                             is RunEvent.Reasoning -> {
                                 thinking.append(event.delta)
-                                if (streamed) updateLastReply(answer.toString(), thinking.toString(), streaming = true)
+                                ensureStreamingReply()
+                                updateLastReply(answer.toString(), thinking.toString(), streaming = true)
                             }
-                            is RunEvent.Tool -> _state.update { it.copy(activity = event.name) }
+                            is RunEvent.Tool -> {
+                                ensureStreamingReply()
+                                updateLastTool(event)
+                            }
                             is RunEvent.Done -> {
                                 val output = event.output.ifBlank { answer.toString() }
                                 val reasoning = event.reasoning.ifBlank { thinking.toString() }
@@ -526,7 +554,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                                 // run: fall back to the REST wrapper instead of
                                 // telling the user the answer is lost.
                                 if (event.retryableTransport && !streamed) throw SocketUnavailable(event.error)
-                                updateLastReply(answer.toString(), thinking.toString(), streaming = false)
+                                updateLastReply(
+                                    answer.toString(),
+                                    thinking.toString(),
+                                    streaming = false,
+                                    terminalToolStatus = ToolRunStatus.Error,
+                                )
                                 _state.update {
                                     it.copy(lines = it.lines + ChatLine(event.error, fromUser = false, isError = true))
                                 }
@@ -603,17 +636,90 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun updateLastReply(text: String, reasoning: String, streaming: Boolean) {
+    private fun updateLastReply(
+        text: String,
+        reasoning: String,
+        streaming: Boolean,
+        terminalToolStatus: ToolRunStatus = ToolRunStatus.Done,
+    ) {
         _state.update { state ->
             val lines = state.lines.toMutableList()
             val index = lines.indexOfLast { !it.fromUser && !it.isError }
             if (index < 0) return@update state
+            val now = System.currentTimeMillis()
+            val current = lines[index]
+            if (!streaming && text.isBlank() && reasoning.isBlank() && current.tools.isEmpty()) {
+                lines.removeAt(index)
+                return@update state.copy(lines = lines)
+            }
             lines[index] = lines[index].copy(
                 text = text,
                 reasoning = reasoning.ifBlank { null },
                 streaming = streaming,
+                finishedAtMillis = if (streaming) null else now,
+                tools = if (streaming) {
+                    current.tools
+                } else {
+                    current.tools.map { tool ->
+                        if (tool.status != ToolRunStatus.Running) tool else tool.copy(
+                            status = terminalToolStatus,
+                            durationSeconds = tool.durationSeconds
+                                ?: ((now - tool.startedAtMillis).coerceAtLeast(0) / 1000.0),
+                        )
+                    }
+                },
             )
             state.copy(lines = lines)
+        }
+    }
+
+    private fun updateLastTool(event: RunEvent.Tool) {
+        _state.update { state ->
+            val lines = state.lines.toMutableList()
+            val lineIndex = lines.indexOfLast { !it.fromUser && !it.isError }
+            if (lineIndex < 0) return@update state
+            val line = lines[lineIndex]
+            val tools = line.tools.toMutableList()
+            val matchingIndex = when {
+                event.id.isNotBlank() -> tools.indexOfLast { it.id == event.id }
+                event.status != ToolRunStatus.Running -> tools.indexOfLast {
+                    it.status == ToolRunStatus.Running && it.name == event.name
+                }
+                else -> -1
+            }
+
+            if (matchingIndex >= 0) {
+                val current = tools[matchingIndex]
+                tools[matchingIndex] = current.copy(
+                    name = event.name.ifBlank { current.name },
+                    detail = current.detail ?: event.detail,
+                    status = event.status,
+                    durationSeconds = event.durationSeconds ?: if (event.status == ToolRunStatus.Running) {
+                        current.durationSeconds
+                    } else {
+                        (event.occurredAtMillis - current.startedAtMillis).coerceAtLeast(0) / 1000.0
+                    },
+                )
+            } else {
+                val fallbackDuration = event.durationSeconds
+                val startedAt = if (fallbackDuration != null) {
+                    event.occurredAtMillis - (fallbackDuration * 1000).toLong()
+                } else {
+                    event.occurredAtMillis
+                }
+                tools += ChatToolStep(
+                    id = event.id.ifBlank { "${event.name}-${event.occurredAtMillis}" },
+                    name = event.name,
+                    detail = event.detail,
+                    status = event.status,
+                    startedAtMillis = startedAt,
+                    durationSeconds = fallbackDuration,
+                )
+            }
+
+            lines[lineIndex] = line.copy(tools = tools)
+            val active = tools.lastOrNull { it.status == ToolRunStatus.Running }?.name
+            state.copy(lines = lines, activity = active)
         }
     }
 
@@ -631,7 +737,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { state ->
             val lines = state.lines.toMutableList()
             val index = lines.indexOfLast { it.streaming }
-            if (index >= 0) lines[index] = lines[index].copy(streaming = false)
+            if (index >= 0) {
+                val now = System.currentTimeMillis()
+                lines[index] = lines[index].copy(
+                    streaming = false,
+                    finishedAtMillis = now,
+                    tools = lines[index].tools.map { tool ->
+                        if (tool.status != ToolRunStatus.Running) tool else tool.copy(
+                            status = ToolRunStatus.Error,
+                            durationSeconds = (now - tool.startedAtMillis).coerceAtLeast(0) / 1000.0,
+                        )
+                    },
+                )
+            }
             state.copy(lines = lines, sending = false, activity = null)
         }
     }
