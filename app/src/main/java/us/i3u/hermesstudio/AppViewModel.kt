@@ -13,14 +13,29 @@ import kotlinx.coroutines.withContext
 
 enum class Screen {
     Loading, Onboarding, Login, Chats, Groups, Conversation, Room, Profiles,
-    Settings, SettingsGroup, Channels, Channel,
+    Settings, SettingsGroup, Channels, Channel, CronJobs, CronJob, CronHistory,
 }
 
 /** Settings is a short list of these; each opens its own screen. */
-enum class SettingsGroup { Server, Profile, Agent, Device, About }
+enum class SettingsGroup {
+    Server, Users, Profile, Models, Agent, Memory, Compression, Sessions,
+    Privacy, Proxy, Display, Device, About,
+}
 
 /** The two list tabs, mirroring Studio's chat / group-chat switch. */
 enum class Tab { Chats, Groups }
+
+private data class SessionBootstrap(
+    val user: CurrentUser,
+    val profiles: List<Profile>,
+    val sessions: List<SessionSummary>,
+)
+
+private data class AccountSettingsData(
+    val user: CurrentUser,
+    val locks: List<LockedIp>,
+    val avatar: AvatarSpec,
+)
 
 data class ChatLine(
     val text: String,
@@ -41,6 +56,7 @@ data class UiState(
     val busy: Boolean = false,
     val error: String? = null,
     val account: String? = null,
+    val currentUser: CurrentUser? = null,
     val profiles: List<Profile> = emptyList(),
     /** Blank means "All profiles", the same default Studio shows. */
     val profileFilter: String = "",
@@ -81,6 +97,30 @@ data class UiState(
     val agentSettings: AgentSettings? = null,
     val autoStart: AutoStartPolicy? = null,
     val loadingAgentSettings: Boolean = false,
+    val studioSettings: StudioSettings? = null,
+    val loadingStudioSettings: Boolean = false,
+    val lockedIps: List<LockedIp> = emptyList(),
+    val accountAvatar: AvatarSpec? = null,
+    val loadingAccountSettings: Boolean = false,
+    val managedUsers: List<ManagedUser> = emptyList(),
+    val managedProfiles: List<String> = emptyList(),
+    val loadingManagedUsers: Boolean = false,
+    val modelProviders: List<ModelProvider> = emptyList(),
+    val loadingModelProviders: Boolean = false,
+    val cronJobs: List<CronJob> = emptyList(),
+    val cronLoading: Boolean = false,
+    /** The job currently running a pause/resume/run/delete request. */
+    val cronActionId: String? = null,
+    val editingCronJob: CronJob? = null,
+    val cronEditorJobId: String? = null,
+    val cronEditorLoading: Boolean = false,
+    val cronSkills: List<String> = emptyList(),
+    val cronDeliveryTargets: List<CronDeliveryTarget> = emptyList(),
+    val cronHistoryJob: CronJob? = null,
+    val cronRuns: List<CronRun> = emptyList(),
+    val cronHistoryLoading: Boolean = false,
+    val cronRunLoading: Boolean = false,
+    val openCronRun: CronRunDetail? = null,
     val notice: String? = null,
 )
 
@@ -133,13 +173,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             api.update(store.baseUrl, store.token)
             chat.update(store.baseUrl, store.token)
             group.update(store.baseUrl, store.token)
-            Triple(api.verifyToken(), api.profiles(), api.sessions(null))
+            val user = api.currentUser()
+            SessionBootstrap(user, api.profiles(), api.sessions(null))
         },
-        onSuccess = { (account, profiles, sessions) ->
+        onSuccess = { (user, profiles, sessions) ->
             _state.update {
                 it.copy(
                     screen = Screen.Chats,
-                    account = account,
+                    account = user.username,
+                    currentUser = user,
                     profiles = profiles,
                     activeProfile = pickProfile(profiles),
                     sessions = sessions,
@@ -196,19 +238,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 api.update(normalized, token)
                 chat.update(normalized, token)
                 group.update(normalized, token)
-                listOf(api.verifyToken(), api.profiles(), api.sessions(null))
+                val user = api.currentUser()
+                SessionBootstrap(user, api.profiles(), api.sessions(null))
             },
-            onSuccess = { parts ->
-                @Suppress("UNCHECKED_CAST")
-                val profiles = parts[1] as List<Profile>
-
-                @Suppress("UNCHECKED_CAST")
-                val sessions = parts[2] as List<SessionSummary>
+            onSuccess = { (user, profiles, sessions) ->
                 _state.update {
                     it.copy(
                         screen = Screen.Chats,
                         baseUrl = normalized,
-                        account = parts[0] as String,
+                        account = user.username,
+                        currentUser = user,
                         profiles = profiles,
                         activeProfile = pickProfile(profiles),
                         sessions = sessions,
@@ -924,10 +963,244 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 error = null,
                 notice = null,
                 loadingAgentSettings = group == SettingsGroup.Agent,
+                loadingStudioSettings = group in STUDIO_CONFIG_GROUPS,
+                loadingAccountSettings = group == SettingsGroup.Server,
+                loadingManagedUsers = group == SettingsGroup.Users,
+                loadingModelProviders = group == SettingsGroup.Models,
             )
         }
         if (group == SettingsGroup.Agent) loadAgentSettings()
         if (group == SettingsGroup.Profile) loadModels()
+        if (group in STUDIO_CONFIG_GROUPS) loadStudioSettings()
+        if (group == SettingsGroup.Server) loadAccountSettings()
+        if (group == SettingsGroup.Users) loadManagedUsers()
+        if (group == SettingsGroup.Models) loadModelProviders()
+    }
+
+    private fun loadStudioSettings(showLoading: Boolean = true) {
+        val profile = currentProfile()
+        if (showLoading) _state.update { it.copy(loadingStudioSettings = true) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.studioSettings(profile) } }
+                .onSuccess { settings ->
+                    _state.update { it.copy(studioSettings = settings, loadingStudioSettings = false) }
+                }
+                .onFailure { failure ->
+                    _state.update {
+                        it.copy(loadingStudioSettings = false, error = failure.readableMessage(localized))
+                    }
+                }
+        }
+    }
+
+    /** Saves a partial Studio config section so untouched keys remain unchanged. */
+    fun setStudioValue(section: String, key: String, value: Any) {
+        saveStudioSection(section, org.json.JSONObject().put(key, value))
+    }
+
+    fun saveProxy(https: String, http: String, all: String, noProxy: String) {
+        saveStudioSection(
+            "proxy",
+            org.json.JSONObject()
+                .put("HTTPS_PROXY", https.trim())
+                .put("HTTP_PROXY", http.trim())
+                .put("ALL_PROXY", all.trim())
+                .put("NO_PROXY", noProxy.trim()),
+        )
+    }
+
+    private fun saveStudioSection(section: String, values: org.json.JSONObject) {
+        val profile = currentProfile()
+        _state.update { it.copy(savingSetting = true, error = null, notice = null) }
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    // Studio restarts the gateway for proxy and protected-action
+                    // approval changes so those values take effect immediately.
+                    api.updateConfigSection(
+                        profile,
+                        section,
+                        values,
+                        restart = section == "proxy" || section == "approvals",
+                    )
+                }
+            }.onSuccess {
+                _state.update { it.copy(savingSetting = false, notice = str(R.string.notice_saved)) }
+                loadStudioSettings(showLoading = false)
+            }.onFailure { failure ->
+                _state.update { it.copy(savingSetting = false, error = failure.readableMessage(localized)) }
+            }
+        }
+    }
+
+    private fun loadAccountSettings() {
+        _state.update { it.copy(loadingAccountSettings = true) }
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val user = api.currentUser()
+                    AccountSettingsData(user, api.lockedIps(), api.myAvatar(user.username))
+                }
+            }.onSuccess { (user, locks, avatar) ->
+                _state.update {
+                    it.copy(
+                        account = user.username,
+                        currentUser = user,
+                        lockedIps = locks,
+                        accountAvatar = avatar,
+                        loadingAccountSettings = false,
+                    )
+                }
+            }.onFailure { failure ->
+                _state.update {
+                    it.copy(loadingAccountSettings = false, error = failure.readableMessage(localized))
+                }
+            }
+        }
+    }
+
+    fun changeAccountPassword(currentPassword: String, newPassword: String) {
+        accountWork { api.changePassword(currentPassword, newPassword) }
+    }
+
+    fun changeAccountUsername(currentPassword: String, newUsername: String) {
+        accountWork {
+            api.changeUsername(currentPassword, newUsername)
+            loadAccountSettings()
+        }
+    }
+
+    fun setAccountAvatar(bytes: ByteArray, mime: String) {
+        if (mime !in setOf("image/png", "image/jpeg", "image/webp")) {
+            _state.update { it.copy(error = str(R.string.account_avatar_invalid_type)) }
+            return
+        }
+        if (bytes.size > 1024 * 1024) {
+            _state.update { it.copy(error = str(R.string.account_avatar_too_large)) }
+            return
+        }
+        accountWork {
+            val encoded = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+            api.updateMyAvatar("data:$mime;base64,$encoded")
+            loadAccountSettings()
+        }
+    }
+
+    fun randomizeAccountAvatar() = accountWork {
+        val seed = "${_state.value.account.orEmpty()}-${System.currentTimeMillis()}-${java.util.UUID.randomUUID()}"
+        val svg = MultiAvatar.svg(getApplication(), seed)
+        val encoded = android.util.Base64.encodeToString(svg.toByteArray(), android.util.Base64.NO_WRAP)
+        api.updateMyAvatar("data:image/svg+xml;base64,$encoded", seed)
+        loadAccountSettings()
+    }
+
+    fun resetAccountAvatar() = accountWork {
+        api.resetMyAvatar()
+        loadAccountSettings()
+    }
+
+    fun unlockIp(ip: String) = accountWork {
+        api.unlockIp(ip)
+        loadAccountSettings()
+    }
+
+    fun unlockAllIps() = accountWork {
+        api.unlockAllIps()
+        loadAccountSettings()
+    }
+
+    private fun accountWork(block: suspend () -> Unit) {
+        _state.update { it.copy(savingSetting = true, error = null, notice = null) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { block() } }
+                .onSuccess { _state.update { it.copy(savingSetting = false, notice = str(R.string.notice_saved)) } }
+                .onFailure { failure ->
+                    _state.update { it.copy(savingSetting = false, error = failure.readableMessage(localized)) }
+                }
+        }
+    }
+
+    private fun loadManagedUsers() {
+        _state.update { it.copy(loadingManagedUsers = true) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.managedUsers() } }
+                .onSuccess { result ->
+                    _state.update {
+                        it.copy(
+                            managedUsers = result.users,
+                            managedProfiles = result.profiles,
+                            loadingManagedUsers = false,
+                        )
+                    }
+                }
+                .onFailure { failure ->
+                    _state.update {
+                        it.copy(loadingManagedUsers = false, error = failure.readableMessage(localized))
+                    }
+                }
+        }
+    }
+
+    fun saveManagedUser(existingId: Int?, draft: ManagedUserDraft) {
+        _state.update { it.copy(savingSetting = true, error = null, notice = null) }
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    if (existingId == null) api.createManagedUser(draft)
+                    else api.updateManagedUser(existingId, draft)
+                }
+            }.onSuccess {
+                _state.update { it.copy(savingSetting = false, notice = str(R.string.notice_saved)) }
+                loadManagedUsers()
+            }.onFailure { failure ->
+                _state.update { it.copy(savingSetting = false, error = failure.readableMessage(localized)) }
+            }
+        }
+    }
+
+    fun deleteManagedUser(user: ManagedUser) {
+        _state.update { it.copy(savingSetting = true, error = null, notice = null) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.deleteManagedUser(user.id) } }
+                .onSuccess {
+                    _state.update { it.copy(savingSetting = false, notice = str(R.string.notice_saved)) }
+                    loadManagedUsers()
+                }
+                .onFailure { failure ->
+                    _state.update { it.copy(savingSetting = false, error = failure.readableMessage(localized)) }
+                }
+        }
+    }
+
+    private fun loadModelProviders() {
+        val profile = currentProfile()
+        _state.update { it.copy(loadingModelProviders = true) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.modelProviders(profile) } }
+                .onSuccess { providers ->
+                    _state.update { it.copy(modelProviders = providers, loadingModelProviders = false) }
+                }
+                .onFailure { failure ->
+                    _state.update {
+                        it.copy(loadingModelProviders = false, error = failure.readableMessage(localized))
+                    }
+                }
+        }
+    }
+
+    fun saveProviderKey(provider: String, key: String) {
+        val profile = currentProfile()
+        _state.update { it.copy(savingSetting = true, error = null, notice = null) }
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) { api.updateProviderApiKey(profile, provider, key.trim()) }
+            }.onSuccess {
+                _state.update { it.copy(savingSetting = false, notice = str(R.string.notice_saved)) }
+                loadModelProviders()
+            }.onFailure { failure ->
+                _state.update { it.copy(savingSetting = false, error = failure.readableMessage(localized)) }
+            }
+        }
     }
 
     private fun loadAgentSettings() {
@@ -981,6 +1254,257 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
         }
     }
+
+    // ── scheduled jobs ──────────────────────────────────────────────────
+
+    fun openCronJobs() {
+        _state.update {
+            it.copy(
+                screen = Screen.CronJobs,
+                error = null,
+                notice = null,
+                editingCronJob = null,
+                cronEditorJobId = null,
+                openCronRun = null,
+            )
+        }
+        refreshCronJobs()
+    }
+
+    fun refreshCronJobs() {
+        if (_state.value.cronLoading) return
+        val profile = _state.value.activeProfile.ifBlank { "default" }
+        _state.update { it.copy(cronLoading = true, error = null) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.cronJobs(profile) } }
+                .onSuccess { jobs ->
+                    _state.update {
+                        it.copy(cronJobs = jobs.sortedBy { job -> job.name.lowercase() }, cronLoading = false)
+                    }
+                }
+                .onFailure { failure ->
+                    _state.update {
+                        it.copy(cronLoading = false, error = failure.readableMessage(localized))
+                    }
+                }
+        }
+    }
+
+    /** Opens a blank editor, or reloads one raw job before editing it. */
+    fun openCronJob(jobId: String? = null) {
+        val profile = _state.value.activeProfile.ifBlank { "default" }
+        _state.update {
+            it.copy(
+                screen = Screen.CronJob,
+                editingCronJob = null,
+                cronEditorJobId = jobId,
+                cronEditorLoading = true,
+                error = null,
+                notice = null,
+            )
+        }
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    CronEditorData(
+                        job = jobId?.let { api.cronJob(profile, it) },
+                        // These enrich the form, but a missing optional endpoint
+                        // must not make the core job impossible to edit.
+                        models = runCatching { api.availableModels(profile) }.getOrDefault(emptyList()),
+                        skills = runCatching { api.cronSkills(profile) }.getOrDefault(emptyList()),
+                        targets = runCatching { api.cronDeliveryTargets(profile) }.getOrDefault(emptyList()),
+                    )
+                }
+            }.onSuccess { data ->
+                _state.update {
+                    it.copy(
+                        editingCronJob = data.job,
+                        models = data.models,
+                        modelsProfile = profile,
+                        cronSkills = data.skills,
+                        cronDeliveryTargets = data.targets,
+                        cronEditorLoading = false,
+                    )
+                }
+            }.onFailure { failure ->
+                _state.update {
+                    it.copy(cronEditorLoading = false, error = failure.readableMessage(localized))
+                }
+            }
+        }
+    }
+
+    fun saveCronJob(draft: CronJobDraft) {
+        if (_state.value.savingSetting) return
+        if (draft.name.isBlank()) {
+            _state.update { it.copy(error = str(R.string.cron_name_required)) }
+            return
+        }
+        if (draft.schedule.isBlank()) {
+            _state.update { it.copy(error = str(R.string.cron_schedule_required)) }
+            return
+        }
+        if (draft.prompt.isBlank()) {
+            _state.update { it.copy(error = str(R.string.cron_prompt_required)) }
+            return
+        }
+        if (draft.repeatTimes != null && draft.repeatTimes < 1) {
+            _state.update { it.copy(error = str(R.string.cron_repeat_invalid)) }
+            return
+        }
+
+        val profile = _state.value.activeProfile.ifBlank { "default" }
+        val original = _state.value.editingCronJob
+        _state.update { it.copy(savingSetting = true, error = null, notice = null) }
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    if (original == null) api.createCronJob(profile, draft)
+                    else api.updateCronJob(profile, original, draft)
+                }
+            }.onSuccess { saved ->
+                _state.update {
+                    it.copy(
+                        screen = Screen.CronJobs,
+                        savingSetting = false,
+                        editingCronJob = null,
+                        cronEditorJobId = null,
+                        cronJobs = it.cronJobs.upsert(saved),
+                        notice = str(
+                            if (original == null) R.string.cron_notice_created else R.string.cron_notice_updated,
+                        ),
+                    )
+                }
+            }.onFailure { failure ->
+                _state.update {
+                    it.copy(savingSetting = false, error = failure.readableMessage(localized))
+                }
+            }
+        }
+    }
+
+    fun toggleCronJob(job: CronJob) {
+        if (_state.value.cronActionId != null) return
+        val profile = _state.value.activeProfile.ifBlank { "default" }
+        val resume = job.state == "paused" || !job.enabled
+        _state.update { it.copy(cronActionId = job.id, error = null, notice = null) }
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    if (resume) api.resumeCronJob(profile, job.id) else api.pauseCronJob(profile, job.id)
+                }
+            }.onSuccess { updated ->
+                _state.update {
+                    it.copy(
+                        cronActionId = null,
+                        cronJobs = it.cronJobs.upsert(updated),
+                        notice = str(if (resume) R.string.cron_notice_resumed else R.string.cron_notice_paused),
+                    )
+                }
+            }.onFailure { failure ->
+                _state.update {
+                    it.copy(cronActionId = null, error = failure.readableMessage(localized))
+                }
+            }
+        }
+    }
+
+    fun runCronJob(job: CronJob) {
+        if (_state.value.cronActionId != null) return
+        val profile = _state.value.activeProfile.ifBlank { "default" }
+        _state.update { it.copy(cronActionId = job.id, error = null, notice = null) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.runCronJob(profile, job.id) } }
+                .onSuccess { updated ->
+                    _state.update {
+                        it.copy(
+                            cronActionId = null,
+                            cronJobs = it.cronJobs.upsert(updated),
+                            notice = str(R.string.cron_notice_triggered),
+                        )
+                    }
+                }
+                .onFailure { failure ->
+                    _state.update {
+                        it.copy(cronActionId = null, error = failure.readableMessage(localized))
+                    }
+                }
+        }
+    }
+
+    fun deleteCronJob(job: CronJob) {
+        if (_state.value.cronActionId != null) return
+        val profile = _state.value.activeProfile.ifBlank { "default" }
+        _state.update { it.copy(cronActionId = job.id, error = null, notice = null) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.deleteCronJob(profile, job.id) } }
+                .onSuccess {
+                    _state.update {
+                        it.copy(
+                            cronActionId = null,
+                            cronJobs = it.cronJobs.filterNot { candidate -> candidate.id == job.id },
+                            notice = str(R.string.cron_notice_deleted),
+                        )
+                    }
+                }
+                .onFailure { failure ->
+                    _state.update {
+                        it.copy(cronActionId = null, error = failure.readableMessage(localized))
+                    }
+                }
+        }
+    }
+
+    fun openCronHistory(job: CronJob) {
+        _state.update {
+            it.copy(
+                screen = Screen.CronHistory,
+                cronHistoryJob = job,
+                cronRuns = emptyList(),
+                openCronRun = null,
+                error = null,
+                notice = null,
+            )
+        }
+        refreshCronHistory()
+    }
+
+    fun refreshCronHistory() {
+        val job = _state.value.cronHistoryJob ?: return
+        if (_state.value.cronHistoryLoading) return
+        val profile = _state.value.activeProfile.ifBlank { "default" }
+        _state.update { it.copy(cronHistoryLoading = true, error = null) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.cronRuns(profile, job.id) } }
+                .onSuccess { runs ->
+                    _state.update { it.copy(cronRuns = runs, cronHistoryLoading = false) }
+                }
+                .onFailure { failure ->
+                    _state.update {
+                        it.copy(cronHistoryLoading = false, error = failure.readableMessage(localized))
+                    }
+                }
+        }
+    }
+
+    fun openCronRun(run: CronRun) {
+        if (_state.value.cronRunLoading) return
+        val profile = _state.value.activeProfile.ifBlank { "default" }
+        _state.update { it.copy(cronRunLoading = true, openCronRun = null, error = null) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.cronRun(profile, run) } }
+                .onSuccess { detail ->
+                    _state.update { it.copy(cronRunLoading = false, openCronRun = detail) }
+                }
+                .onFailure { failure ->
+                    _state.update {
+                        it.copy(cronRunLoading = false, error = failure.readableMessage(localized))
+                    }
+                }
+        }
+    }
+
+    fun dismissCronRun() = _state.update { it.copy(openCronRun = null) }
 
     // ── channels ──────────────────────────────────────────────────────────
 
@@ -1154,7 +1678,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { state ->
             val target = when (state.screen) {
                 Screen.Channel -> Screen.Channels
-                Screen.Channels, Screen.SettingsGroup -> Screen.Settings
+                Screen.CronJob, Screen.CronHistory -> Screen.CronJobs
+                Screen.Channels, Screen.SettingsGroup, Screen.CronJobs -> Screen.Settings
                 else -> if (state.tab == Tab.Groups) Screen.Groups else Screen.Chats
             }
             state.copy(
@@ -1165,6 +1690,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 attachments = if (state.screen == Screen.Conversation) emptyList() else state.attachments,
                 sessionModel = state.sessionModel.takeUnless { state.screen == Screen.Conversation },
                 sessionProvider = state.sessionProvider.takeUnless { state.screen == Screen.Conversation },
+                editingCronJob = state.editingCronJob.takeUnless { state.screen == Screen.CronJob },
+                cronEditorJobId = state.cronEditorJobId.takeUnless { state.screen == Screen.CronJob },
+                openCronRun = null,
             )
         }
     }
@@ -1240,6 +1768,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return runCatching { java.net.URL(withScheme) }.map { withScheme }.getOrNull()
     }
 }
+
+private val STUDIO_CONFIG_GROUPS = setOf(
+    SettingsGroup.Display,
+    SettingsGroup.Proxy,
+    SettingsGroup.Memory,
+    SettingsGroup.Compression,
+    SettingsGroup.Sessions,
+    SettingsGroup.Privacy,
+)
+
+private data class CronEditorData(
+    val job: CronJob?,
+    val models: List<ModelOption>,
+    val skills: List<String>,
+    val targets: List<CronDeliveryTarget>,
+)
+
+private fun List<CronJob>.upsert(job: CronJob): List<CronJob> =
+    (filterNot { it.id == job.id } + job).sortedBy { it.name.lowercase() }
 
 private val INVITE_ALPHABET = ('A'..'Z') + ('2'..'9')
 

@@ -7,7 +7,7 @@ Not affiliated with EKKOLearnAI.
 The Studio web UI is built for the desktop, so this app talks to the same HTTP API
 directly and renders a native, phone-shaped interface instead of wrapping a web view.
 
-## What works today (v0.11)
+## What works today (v0.12)
 
 - **Replies stream in as they are written**, over the same `/chat-run` socket the
   web UI uses, with a stop button that calls the run off mid-sentence. If the
@@ -22,10 +22,17 @@ directly and renders a native, phone-shaped interface instead of wrapping a web 
 - **Channels are set up from the app**, on their own screen: enter a bot token (or
   the app id, secret and the rest — each channel asks for exactly the fields the
   server maps), turn a channel on or off, or remove its credentials. Saving writes
-  into your server and it restarts the gateway itself, so the channel comes up
-- **Settings is a table of contents**, not a wall: server and account, active profile,
-  agent, channels, this device, about — each opens its own screen, the way Studio
-  groups its own settings into tabs
+  into your server and it restarts the gateway itself, so the channel comes up ready
+- **Scheduled jobs (Cron Jobs) are fully manageable** for the active profile:
+  create and edit the schedule, prompt, model, skills, delivery target and repeat
+  limit; pause or resume it, run it immediately, delete it, and read its run output.
+  Every call uses the same profile-scoped endpoints and `X-Hermes-Profile` header
+  as Studio.
+- **Studio settings are native mobile screens**, not one long wall: account security
+  and IP locks; super-admin user management; model-provider keys; agent and gateway
+  start policy; memory; context compression; session reset and write approvals;
+  privacy redaction; proxy; and Studio display preferences. Every value is read from
+  and saved to the active profile through the same config contracts as the web UI
 - **Agent settings**: max turns, gateway timeout, restart drain timeout, tool
   enforcement, and **gateway auto-start where Studio keeps it** — including the
   profile policy, so a server with several profiles can start only the ones that
@@ -48,8 +55,6 @@ directly and renders a native, phone-shaped interface instead of wrapping a web 
   Hermes Studio server yourself
 - **Splash while the stored session is verified** — the sign-in form only appears when
   you actually need to sign in
-- **Settings**: server and account, the active profile's default model, a gateway
-  restart, reasoning effort and sign out
 - Sign in with your Studio server address, username and password
 - Bearer token stored in `EncryptedSharedPreferences`, backed by the Android Keystore
 - **Your existing Studio conversations**, with the same list shape as the web sidebar:
@@ -103,6 +108,8 @@ the previous version.
 | --- | --- |
 | Sign in | `POST /api/auth/login` |
 | Verify a stored token | `GET /api/auth/me` |
+| Account security and IP locks | `POST /api/auth/change-password` · `POST /api/auth/change-username` · `GET` / `DELETE /api/auth/locked-ips` |
+| Super-admin account management | `GET` · `POST /api/auth/users` · `PUT` · `DELETE /api/auth/users/{id}` |
 | Profiles | `GET /api/hermes/profiles` |
 | Conversations | `GET /api/hermes/sessions?profile=…` |
 | Conversation history | `GET /api/hermes/sessions/conversations/{id}/messages` |
@@ -113,6 +120,8 @@ the previous version.
 | Available models | `GET /api/hermes/available-models?profile=…` |
 | Set a conversation's model | `POST /api/hermes/sessions/{id}/model` |
 | Profile default model | `GET /api/hermes/config` · `PUT /api/hermes/config/model` |
+| Studio setting sections | `GET /api/hermes/config` · `PUT /api/hermes/config` |
+| Model-provider credentials | `PUT /api/hermes/config/providers/{provider}` |
 | Restart a profile's gateway | `POST /api/hermes/profiles/{name}/gateway/restart` |
 | Send a message (streaming) | Socket.IO `/chat-run` — `run`, `abort` |
 | Send a message (fallback) | `POST /api/chat-run/runs` |
@@ -122,6 +131,9 @@ the previous version.
 | Post into a room | Socket.IO `/group-chat` — `join`, `message` |
 | Channel state and gateway auto-start | `GET /api/hermes/config` · `PUT /api/hermes/config` |
 | Channel credentials | `PUT /api/hermes/config/credentials` · `DELETE /api/hermes/config/credentials/{platform}` |
+| Scheduled jobs | `GET` · `POST /api/hermes/jobs` · `PATCH` · `DELETE /api/hermes/jobs/{id}` |
+| Pause / resume / run a job | `POST /api/hermes/jobs/{id}/pause` · `resume` · `run` |
+| Scheduled job run history | `GET /api/cron-history` · `GET /api/cron-history/{jobId}/{fileName}` |
 | App mark | `GET /logo.png` (static, cached on the device) |
 
 Both sockets authenticate with the same bearer token, passed in the Socket.IO
@@ -141,7 +153,7 @@ written to the app cache, uploaded, and deleted immediately.
 - Editing a profile's avatar from the app, not only reading it
 - Voice settings (STT and TTS providers) from the app
 - Push notifications for finished runs
-- Kanban and scheduled jobs, read-only first
+- Kanban
 
 ## Build locally
 
@@ -154,8 +166,9 @@ push, so a local SDK is optional.
 
 ### Running it without a Studio server
 
-`tools/mock-studio.py` answers the handful of REST endpoints the app calls, with
-sample profiles, conversations and a room — enough to open every screen. It does not
+`tools/mock-studio.py` answers the REST endpoints the app calls, with sample profiles,
+conversations, accounts, settings, model providers, a room and scheduled jobs — enough
+to open and edit every screen. It does not
 speak Socket.IO, which makes it a good way to exercise the REST fallback: messages
 still get answered, just not word by word.
 

@@ -64,6 +64,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Hub
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -143,7 +144,8 @@ private fun App(viewModel: AppViewModel = viewModel()) {
     // back to. Only the two root lists let it fall through and close the app.
     when (state.screen) {
         Screen.Conversation, Screen.Room, Screen.Profiles, Screen.Settings,
-        Screen.SettingsGroup, Screen.Channels, Screen.Channel,
+        Screen.SettingsGroup, Screen.Channels, Screen.Channel, Screen.CronJobs,
+        Screen.CronJob, Screen.CronHistory,
         -> BackHandler { viewModel.back() }
         Screen.Groups -> BackHandler { viewModel.showTab(Tab.Chats) }
         else -> Unit
@@ -165,6 +167,9 @@ private fun App(viewModel: AppViewModel = viewModel()) {
         Screen.SettingsGroup -> SettingsGroupScreen(state, viewModel)
         Screen.Channels -> ChannelsScreen(state, viewModel)
         Screen.Channel -> ChannelScreen(state, viewModel)
+        Screen.CronJobs -> CronJobsScreen(state, viewModel)
+        Screen.CronJob -> CronJobEditorScreen(state, viewModel)
+        Screen.CronHistory -> CronHistoryScreen(state, viewModel)
         Screen.Login -> LoginScreen(state, viewModel)
         Screen.Chats -> ChatsScreen(state, viewModel)
         Screen.Groups -> GroupsScreen(state, viewModel)
@@ -1476,7 +1481,7 @@ private enum class ConfirmAction { SignOut, RestartGateway }
 
 /** One text field, one button: rename a thing, or name a new one. */
 @Composable
-private fun TextPromptDialog(
+internal fun TextPromptDialog(
     title: String,
     initial: String,
     hint: String,
@@ -1538,7 +1543,7 @@ private fun ManageSheet(
 
 /** Stands between a stray tap and something that cannot be undone. */
 @Composable
-private fun ConfirmDialog(
+internal fun ConfirmDialog(
     title: String,
     body: String,
     action: String,
@@ -1641,12 +1646,23 @@ private fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
             state.error?.let { ErrorNote(it) { viewModel.dismissError() } }
             state.notice?.let { NoticeNote(it) { viewModel.dismissNotice() } }
 
+            SettingsSection(stringResource(R.string.settings_category_account))
             SettingsRow(
                 icon = Icons.Filled.Dns,
                 label = stringResource(R.string.settings_group_server),
                 value = state.baseUrl.ifBlank { stringResource(R.string.settings_group_server_note) },
                 onClick = { viewModel.openSettingsGroup(SettingsGroup.Server) },
             )
+            if (state.currentUser?.role == "super_admin") {
+                SettingsRow(
+                    icon = Icons.Filled.Group,
+                    label = stringResource(R.string.settings_group_users),
+                    value = stringResource(R.string.settings_group_users_note),
+                    onClick = { viewModel.openSettingsGroup(SettingsGroup.Users) },
+                )
+            }
+
+            SettingsSection(stringResource(R.string.settings_category_profile))
             SettingsRow(
                 icon = Icons.Filled.Person,
                 label = stringResource(R.string.settings_group_profile),
@@ -1654,11 +1670,43 @@ private fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
                 onClick = { viewModel.openSettingsGroup(SettingsGroup.Profile) },
             )
             SettingsRow(
+                icon = Icons.Filled.WbSunny,
+                label = stringResource(R.string.settings_group_models),
+                value = stringResource(R.string.settings_group_models_note),
+                onClick = { viewModel.openSettingsGroup(SettingsGroup.Models) },
+            )
+            SettingsRow(
                 icon = Icons.Filled.Psychology,
                 label = stringResource(R.string.settings_group_agent),
                 value = stringResource(R.string.settings_group_agent_note),
                 onClick = { viewModel.openSettingsGroup(SettingsGroup.Agent) },
             )
+            SettingsRow(
+                icon = Icons.Filled.Psychology,
+                label = stringResource(R.string.settings_group_memory),
+                value = stringResource(R.string.settings_group_memory_note),
+                onClick = { viewModel.openSettingsGroup(SettingsGroup.Memory) },
+            )
+            SettingsRow(
+                icon = Icons.Filled.RestartAlt,
+                label = stringResource(R.string.settings_group_compression),
+                value = stringResource(R.string.settings_group_compression_note),
+                onClick = { viewModel.openSettingsGroup(SettingsGroup.Compression) },
+            )
+            SettingsRow(
+                icon = Icons.Filled.Check,
+                label = stringResource(R.string.settings_group_sessions),
+                value = stringResource(R.string.settings_group_sessions_note),
+                onClick = { viewModel.openSettingsGroup(SettingsGroup.Sessions) },
+            )
+            SettingsRow(
+                icon = Icons.Filled.Check,
+                label = stringResource(R.string.settings_group_privacy),
+                value = stringResource(R.string.settings_group_privacy_note),
+                onClick = { viewModel.openSettingsGroup(SettingsGroup.Privacy) },
+            )
+
+            SettingsSection(stringResource(R.string.settings_category_integrations))
             SettingsRow(
                 icon = Icons.Filled.Hub,
                 label = stringResource(R.string.settings_channels),
@@ -1672,6 +1720,26 @@ private fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
                     )
                 },
                 onClick = { viewModel.openChannels() },
+            )
+            SettingsRow(
+                icon = Icons.Filled.Schedule,
+                label = stringResource(R.string.cron_title),
+                value = stringResource(R.string.settings_group_cron_note),
+                onClick = { viewModel.openCronJobs() },
+            )
+            SettingsRow(
+                icon = Icons.Filled.Dns,
+                label = stringResource(R.string.settings_group_proxy),
+                value = stringResource(R.string.settings_group_proxy_note),
+                onClick = { viewModel.openSettingsGroup(SettingsGroup.Proxy) },
+            )
+
+            SettingsSection(stringResource(R.string.settings_category_app))
+            SettingsRow(
+                icon = Icons.Filled.Settings,
+                label = stringResource(R.string.settings_group_display),
+                value = stringResource(R.string.settings_group_display_note),
+                onClick = { viewModel.openSettingsGroup(SettingsGroup.Display) },
             )
             SettingsRow(
                 icon = Icons.Filled.Language,
@@ -1696,8 +1764,16 @@ private fun SettingsGroupScreen(state: UiState, viewModel: AppViewModel) {
     val title = stringResource(
         when (group) {
             SettingsGroup.Server -> R.string.settings_group_server
+            SettingsGroup.Users -> R.string.settings_group_users
             SettingsGroup.Profile -> R.string.settings_group_profile
+            SettingsGroup.Models -> R.string.settings_group_models
             SettingsGroup.Agent -> R.string.settings_group_agent
+            SettingsGroup.Memory -> R.string.settings_group_memory
+            SettingsGroup.Compression -> R.string.settings_group_compression
+            SettingsGroup.Sessions -> R.string.settings_group_sessions
+            SettingsGroup.Privacy -> R.string.settings_group_privacy
+            SettingsGroup.Proxy -> R.string.settings_group_proxy
+            SettingsGroup.Display -> R.string.settings_group_display
             SettingsGroup.Device -> R.string.settings_group_device
             SettingsGroup.About -> R.string.settings_section_about
         },
@@ -1717,11 +1793,23 @@ private fun SettingsGroupScreen(state: UiState, viewModel: AppViewModel) {
             state.error?.let { ErrorNote(it) { viewModel.dismissError() } }
             state.notice?.let { NoticeNote(it) { viewModel.dismissNotice() } }
 
-            if (!state.loadingAgentSettings) {
+            if (
+                !state.loadingAgentSettings && !state.loadingStudioSettings &&
+                !state.loadingAccountSettings && !state.loadingManagedUsers &&
+                !state.loadingModelProviders
+            ) {
                 when (group) {
                     SettingsGroup.Server -> ServerSettings(state, viewModel)
+                    SettingsGroup.Users -> ManagedUsersSettings(state, viewModel)
                     SettingsGroup.Profile -> ProfileSettings(state, viewModel)
+                    SettingsGroup.Models -> ModelProvidersSettings(state, viewModel)
                     SettingsGroup.Agent -> AgentSettings(state, viewModel)
+                    SettingsGroup.Memory -> MemoryStudioSettings(state, viewModel)
+                    SettingsGroup.Compression -> CompressionStudioSettings(state, viewModel)
+                    SettingsGroup.Sessions -> SessionStudioSettings(state, viewModel)
+                    SettingsGroup.Privacy -> PrivacyStudioSettings(state, viewModel)
+                    SettingsGroup.Proxy -> ProxyStudioSettings(state, viewModel)
+                    SettingsGroup.Display -> DisplayStudioSettings(state, viewModel)
                     SettingsGroup.Device -> DeviceSettings(state, viewModel)
                     SettingsGroup.About -> AboutSettings()
                 }
@@ -1753,6 +1841,7 @@ private fun ServerSettings(state: UiState, viewModel: AppViewModel) {
         label = stringResource(R.string.settings_account),
         value = state.account ?: stringResource(R.string.settings_account_unknown),
     )
+    AccountStudioSettings(state, viewModel)
     SettingsRow(
         icon = Icons.AutoMirrored.Filled.Logout,
         label = stringResource(R.string.action_sign_out),
@@ -1889,7 +1978,12 @@ private fun AgentSettings(state: UiState, viewModel: AppViewModel) {
                         selected = policy.include != null,
                     ) {
                         policySheet = false
-                        viewModel.setAutoStart(policy.copy(include = policy.include ?: listOf(state.activeProfile)))
+                        viewModel.setAutoStart(
+                            policy.copy(
+                                include = policy.include ?: listOf(state.activeProfile),
+                                exclude = emptyList(),
+                            ),
+                        )
                     },
                 ),
             )
@@ -1944,6 +2038,23 @@ private fun AgentSettings(state: UiState, viewModel: AppViewModel) {
         },
     )
     if (policy?.enabled == true) {
+        if (state.activeProfile.ifBlank { "default" } == "default") {
+            SettingsRow(
+                icon = Icons.Filled.Settings,
+                label = stringResource(R.string.agent_management),
+                value = stringResource(R.string.agent_management_note),
+                trailing = {
+                    Switch(
+                        checked = policy.management == "unified",
+                        onCheckedChange = { unified ->
+                            viewModel.setAutoStart(
+                                policy.copy(management = if (unified) "unified" else "per_profile"),
+                            )
+                        },
+                    )
+                },
+            )
+        }
         SettingsRow(
             icon = Icons.Filled.Person,
             label = stringResource(R.string.agent_policy),
@@ -1973,6 +2084,34 @@ private fun AgentSettings(state: UiState, viewModel: AppViewModel) {
                         label = { Text(profile.name) },
                         leadingIcon = if (chosen) {
                             { Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                        } else {
+                            null
+                        },
+                    )
+                }
+            }
+        }
+        if (policy.include == null) {
+            Text(
+                stringResource(R.string.agent_excluded_profiles),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+            )
+            FlowRow(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                state.profiles.forEach { profile ->
+                    val excluded = profile.name in policy.exclude
+                    AssistChip(
+                        onClick = {
+                            val next = if (excluded) policy.exclude - profile.name else policy.exclude + profile.name
+                            viewModel.setAutoStart(policy.copy(exclude = next))
+                        },
+                        label = { Text(profile.name) },
+                        leadingIcon = if (excluded) {
+                            { Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(16.dp)) }
                         } else {
                             null
                         },
@@ -2223,7 +2362,7 @@ private fun ChannelScreen(state: UiState, viewModel: AppViewModel) {
 }
 
 @Composable
-private fun SettingsSection(label: String) {
+internal fun SettingsSection(label: String) {
     Text(
         label.uppercase(),
         style = MaterialTheme.typography.labelSmall,
@@ -2233,7 +2372,7 @@ private fun SettingsSection(label: String) {
 }
 
 @Composable
-private fun SettingsRow(
+internal fun SettingsRow(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     value: String,
@@ -2295,7 +2434,7 @@ private fun LogoRow(value: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun NoticeNote(message: String, onDismiss: () -> Unit) {
+internal fun NoticeNote(message: String, onDismiss: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -2311,7 +2450,7 @@ private fun NoticeNote(message: String, onDismiss: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun StudioTopBar(
+internal fun StudioTopBar(
     title: String,
     subtitle: String? = null,
     onBack: (() -> Unit)? = null,
@@ -2400,7 +2539,7 @@ private fun EmptyNote(message: String) {
 }
 
 @Composable
-private fun LoadingRow() {
+internal fun LoadingRow() {
     Row(
         modifier = Modifier.fillMaxWidth().padding(16.dp),
         horizontalArrangement = Arrangement.Center,
@@ -2410,7 +2549,7 @@ private fun LoadingRow() {
 }
 
 @Composable
-private fun ErrorNote(message: String, onDismiss: () -> Unit) {
+internal fun ErrorNote(message: String, onDismiss: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
