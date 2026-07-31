@@ -2,6 +2,7 @@ package us.i3u.hermesstudio
 
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -68,6 +69,24 @@ class HermesApiContractTest {
         assertEquals("1710001234", session.updatedAt)
         assertEquals("openrouter", session.provider)
         assertEquals("/api/hermes/sessions?profile=manager&limit=80", server.takeRequest().path)
+    }
+
+    @Test
+    fun `generated files use the authenticated Studio download contract`() {
+        val url = api.downloadUrl(
+            "/home/agent/.hermes/profiles/mohamed/workspace/My%20Slides.pptx",
+            "My Slides.pptx",
+            "mohamed",
+        ).toHttpUrl()
+
+        assertEquals("/api/hermes/download", url.encodedPath)
+        assertEquals(
+            "/home/agent/.hermes/profiles/mohamed/workspace/My Slides.pptx",
+            url.queryParameter("path"),
+        )
+        assertEquals("My Slides.pptx", url.queryParameter("name"))
+        assertEquals("mohamed", url.queryParameter("profile"))
+        assertEquals("saved-token", url.queryParameter("token"))
     }
 
     @Test

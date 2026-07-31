@@ -81,6 +81,7 @@ import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Schedule
@@ -114,6 +115,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material.ExperimentalMaterialApi
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -289,12 +294,16 @@ private fun LoginScreen(state: UiState, viewModel: AppViewModel) {
 
 // ── conversation list ────────────────────────────────────────────────────
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
 private fun ChatsScreen(state: UiState, viewModel: AppViewModel) {
     var manage by remember { mutableStateOf<SessionSummary?>(null) }
     var rename by remember { mutableStateOf<SessionSummary?>(null) }
     var confirmDelete by remember { mutableStateOf<SessionSummary?>(null) }
+    val pullRefreshState = rememberPullRefreshState(
+        refreshing = state.refreshingSessions,
+        onRefresh = viewModel::refreshSessions,
+    )
 
     manage?.let { session ->
         ModalBottomSheet(
@@ -343,7 +352,10 @@ private fun ChatsScreen(state: UiState, viewModel: AppViewModel) {
                     IconButton(onClick = { viewModel.startNewConversation() }) {
                         Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.action_new_chat))
                     }
-                    IconButton(onClick = { viewModel.refreshSessions() }) {
+                    IconButton(
+                        onClick = { viewModel.refreshSessions() },
+                        enabled = !state.refreshingSessions,
+                    ) {
                         Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.action_refresh))
                     }
                     IconButton(onClick = { viewModel.show(Screen.Profiles) }) {
@@ -357,17 +369,24 @@ private fun ChatsScreen(state: UiState, viewModel: AppViewModel) {
         },
         bottomBar = { StudioTabs(state, viewModel) },
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            ProfileFilterRow(state, viewModel)
-            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-            if (state.busy) LoadingRow()
-            state.error?.let { ErrorNote(it) { viewModel.dismissError() } }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .pullRefresh(pullRefreshState),
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                ProfileFilterRow(state, viewModel)
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                if (state.busy) LoadingRow()
+                state.error?.let { ErrorNote(it) { viewModel.dismissError() } }
 
-            if (!state.busy && state.sessions.isEmpty()) {
-                EmptyNote(stringResource(R.string.chats_empty))
-            } else {
-                SectionHeader(stringResource(R.string.chats_section), state.sessions.size)
-                LazyColumn {
+                LazyColumn(modifier = Modifier.weight(1f)) {
+                    if (!state.busy && state.sessions.isEmpty()) {
+                        item { EmptyNote(stringResource(R.string.chats_empty)) }
+                    } else {
+                        item { SectionHeader(stringResource(R.string.chats_section), state.sessions.size) }
+                    }
                     items(state.sessions) { session ->
                         SessionRow(
                             session = session,
@@ -379,6 +398,13 @@ private fun ChatsScreen(state: UiState, viewModel: AppViewModel) {
                     }
                 }
             }
+            PullRefreshIndicator(
+                refreshing = state.refreshingSessions,
+                state = pullRefreshState,
+                modifier = Modifier.align(Alignment.TopCenter),
+                backgroundColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.primary,
+            )
         }
     }
 }
@@ -746,9 +772,23 @@ private fun RoomScreen(state: UiState, viewModel: AppViewModel) {
 private fun ConversationScreen(state: UiState, viewModel: AppViewModel) {
     var draft by rememberSaveable { mutableStateOf("") }
     val listState = rememberLazyListState()
+    val conversationKey = state.openSession?.id ?: "new"
+    var reachedInitialBottom by remember(conversationKey) { mutableStateOf(false) }
 
-    LaunchedEffect(state.lines.size) {
-        if (state.lines.isNotEmpty()) listState.animateScrollToItem(state.lines.lastIndex)
+    LaunchedEffect(conversationKey, state.loadingHistory, state.lines.size) {
+        if (!state.loadingHistory && state.lines.isNotEmpty()) {
+            val last = state.lines.lastIndex
+            if (!reachedInitialBottom) {
+                // A huge offset is intentionally clamped by LazyColumn to the
+                // real end, including when the final message is taller than the
+                // viewport. Animation from the first message made old chats
+                // appear to open at the top.
+                listState.scrollToItem(last, Int.MAX_VALUE / 2)
+                reachedInitialBottom = true
+            } else {
+                listState.animateScrollToItem(last, Int.MAX_VALUE / 2)
+            }
+        }
     }
 
     LaunchedEffect(state.transcript) {
@@ -809,6 +849,9 @@ private fun ConversationScreen(state: UiState, viewModel: AppViewModel) {
                             line = line,
                             profile = profile.ifBlank { "default" },
                             avatar = avatar,
+                            onDownload = { file ->
+                                viewModel.downloadChatFile(file, profile.ifBlank { "default" })
+                            },
                         )
                     }
                 }
@@ -830,6 +873,7 @@ private fun ConversationScreen(state: UiState, viewModel: AppViewModel) {
             }
 
             state.error?.let { ErrorNote(it) { viewModel.dismissError() } }
+            state.notice?.let { NoticeNote(it) { viewModel.dismissNotice() } }
 
             Composer(
                 state = state,
@@ -846,11 +890,20 @@ private fun ConversationScreen(state: UiState, viewModel: AppViewModel) {
 }
 
 @Composable
-private fun MessageBubble(line: ChatLine, profile: String? = null, avatar: AvatarSpec? = null) {
+private fun MessageBubble(
+    line: ChatLine,
+    profile: String? = null,
+    avatar: AvatarSpec? = null,
+    onDownload: ((ChatFileLink) -> Unit)? = null,
+) {
+    val parsed = remember(line.text, onDownload != null) {
+        if (onDownload == null) ParsedChatMessage(line.text, emptyList()) else parseChatMessage(line.text)
+    }
     val alignment = if (line.fromUser) Alignment.CenterEnd else Alignment.CenterStart
     val hasThinking = !line.fromUser && (
         line.streaming || line.reasoning?.isNotBlank() == true || line.tools.isNotEmpty()
     )
+    val wide = hasThinking || parsed.files.isNotEmpty()
     val container = when {
         line.isError -> MaterialTheme.colorScheme.errorContainer
         line.fromUser -> MaterialTheme.colorScheme.primaryContainer
@@ -858,8 +911,8 @@ private fun MessageBubble(line: ChatLine, profile: String? = null, avatar: Avata
     }
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = alignment) {
         Row(
-            modifier = if (hasThinking) Modifier.fillMaxWidth() else Modifier,
-            verticalAlignment = if (hasThinking) Alignment.Top else Alignment.Bottom,
+            modifier = if (wide) Modifier.fillMaxWidth() else Modifier,
+            verticalAlignment = if (wide) Alignment.Top else Alignment.Bottom,
         ) {
             // The agent's picture rides with its own replies, the way Studio
             // shows it in the transcript.
@@ -868,7 +921,7 @@ private fun MessageBubble(line: ChatLine, profile: String? = null, avatar: Avata
                 Spacer(Modifier.width(8.dp))
             }
             Card(
-                modifier = if (hasThinking) Modifier.weight(1f) else Modifier,
+                modifier = if (wide) Modifier.weight(1f) else Modifier,
                 colors = CardDefaults.cardColors(containerColor = container),
             ) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -880,7 +933,10 @@ private fun MessageBubble(line: ChatLine, profile: String? = null, avatar: Avata
                         )
                     }
                     if (hasThinking) ThinkingTimeline(line)
-                    if (line.text.isNotBlank()) Text(text = line.text)
+                    if (parsed.text.isNotBlank()) Text(text = parsed.text)
+                    parsed.files.forEach { file ->
+                        ChatFileCard(file = file, onDownload = { onDownload?.invoke(file) })
+                    }
                     val stamp = formatStamp(line.timestamp)
                     if (stamp.isNotBlank()) {
                         Text(
@@ -890,6 +946,54 @@ private fun MessageBubble(line: ChatLine, profile: String? = null, avatar: Avata
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChatFileCard(file: ChatFileLink, onDownload: () -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onDownload),
+        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(10.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(9.dp),
+        ) {
+            Icon(
+                Icons.AutoMirrored.Filled.InsertDriveFile,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    file.label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (file.fileName != file.label) {
+                    Text(
+                        file.fileName,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                            textDirection = TextDirection.Ltr,
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            IconButton(onClick = onDownload) {
+                Icon(
+                    Icons.Filled.Download,
+                    contentDescription = stringResource(R.string.download_action),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
             }
         }
     }

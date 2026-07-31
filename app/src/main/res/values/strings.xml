@@ -90,6 +90,10 @@
     <string name="tool_status_failed">Failed</string>
     <string name="conversation_stop">Stop</string>
     <string name="reasoning_show">Reasoning</string>
+    <string name="download_action">Download file</string>
+    <string name="download_started">Downloading %1$s</string>
+    <string name="download_description">File from the %1$s profile</string>
+    <string name="download_failed">Could not download the file: %1$s</string>
 
     <!-- Composer -->
     <string name="composer_hint">Type a message…</string>

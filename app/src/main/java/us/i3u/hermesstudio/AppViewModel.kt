@@ -1,6 +1,10 @@
 package us.i3u.hermesstudio
 
 import android.app.Application
+import android.app.DownloadManager
+import android.net.Uri
+import android.os.Environment
+import android.webkit.MimeTypeMap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -77,6 +81,8 @@ data class UiState(
     val profileFilter: String = "",
     val activeProfile: String = "",
     val sessions: List<SessionSummary> = emptyList(),
+    /** Drives both the toolbar refresh and the pull-to-refresh indicator. */
+    val refreshingSessions: Boolean = false,
     val rooms: List<Room> = emptyList(),
     val openSession: SessionSummary? = null,
     val openRoom: RoomDetail? = null,
@@ -162,6 +168,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var roomLoadJob: kotlinx.coroutines.Job? = null
     private var openingRoomId: String? = null
     private var activeRunSessionId: String? = null
+    private val queuedDownloadNames = mutableSetOf<String>()
 
     private val _state = MutableStateFlow(
         UiState(
@@ -309,10 +316,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun refreshSessions() = launchWork(
-        work = { api.sessions(_state.value.profileFilter.ifBlank { null }) },
-        onSuccess = { sessions -> _state.update { it.copy(sessions = sessions) } },
-    )
+    fun refreshSessions() {
+        if (_state.value.refreshingSessions) return
+        val profile = _state.value.profileFilter.ifBlank { null }
+        _state.update { it.copy(refreshingSessions = true, error = null) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.sessions(profile) } }
+                .onSuccess { sessions ->
+                    _state.update { it.copy(sessions = sessions, refreshingSessions = false) }
+                }
+                .onFailure { failure ->
+                    _state.update {
+                        it.copy(
+                            refreshingSessions = false,
+                            error = failure.readableMessage(localized),
+                        )
+                    }
+                }
+        }
+    }
 
     fun refreshRooms() = launchWork(
         work = { api.rooms() },
@@ -377,6 +399,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 modelsProfile = it.modelsProfile.takeIf { loaded -> loaded == profile },
                 loadingHistory = true,
                 error = null,
+                notice = null,
             )
         }
 
@@ -429,7 +452,47 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 models = if (it.modelsProfile == profile) it.models else emptyList(),
                 modelsProfile = it.modelsProfile.takeIf { loaded -> loaded == profile },
                 error = null,
+                notice = null,
             )
+        }
+    }
+
+    /** Sends a generated Studio file to Android's public Downloads folder. */
+    fun downloadChatFile(file: ChatFileLink, profile: String) {
+        val application = getApplication<Application>()
+        val destinationName = uniqueQueuedDownloadName(file.fileName)
+        runCatching {
+            val url = api.downloadUrl(file.path, file.fileName, profile.ifBlank { null })
+            val extension = file.fileName.substringAfterLast('.', "").lowercase()
+            val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
+                ?: "application/octet-stream"
+            val request = DownloadManager.Request(Uri.parse(url))
+                .setTitle(file.fileName)
+                .setDescription(str(R.string.download_description, profile.ifBlank { "default" }))
+                .setMimeType(mime)
+                .setAllowedOverMetered(true)
+                .setAllowedOverRoaming(true)
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, destinationName)
+            store.token.takeIf { it.isNotBlank() }
+                ?.let { request.addRequestHeader("Authorization", "Bearer $it") }
+            profile.takeIf { it.isNotBlank() }
+                ?.let { request.addRequestHeader("X-Hermes-Profile", it) }
+            val manager = application.getSystemService(DownloadManager::class.java)
+                ?: error("DownloadManager unavailable")
+            manager.enqueue(request)
+        }.onSuccess {
+            _state.update {
+                it.copy(notice = str(R.string.download_started, destinationName), error = null)
+            }
+        }.onFailure { failure ->
+            queuedDownloadNames.remove(destinationName)
+            _state.update {
+                it.copy(
+                    error = str(R.string.download_failed, failure.readableMessage(localized)),
+                    notice = null,
+                )
+            }
         }
     }
 
@@ -2373,6 +2436,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun currentProfile(): String =
         _state.value.openSession?.profile?.ifBlank { null }
             ?: _state.value.activeProfile.ifBlank { "default" }
+
+    private fun uniqueQueuedDownloadName(requested: String): String {
+        val clean = inferDownloadFileName(requested, requested)
+        if (queuedDownloadNames.add(clean)) return clean
+        val dot = clean.lastIndexOf('.').takeIf { it > 0 }
+        val stem = dot?.let(clean::substring) ?: clean
+        val extension = dot?.let { clean.substring(it) }.orEmpty()
+        var suffix = System.currentTimeMillis()
+        while (true) {
+            val candidate = "$stem-$suffix$extension"
+            if (queuedDownloadNames.add(candidate)) return candidate
+            suffix += 1
+        }
+    }
 
     private fun pickProfile(profiles: List<Profile>): String {
         val stored = store.profile

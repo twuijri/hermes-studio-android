@@ -89,6 +89,10 @@
     <string name="tool_status_failed">فشل</string>
     <string name="conversation_stop">إيقاف</string>
     <string name="reasoning_show">التفكير</string>
+    <string name="download_action">تحميل الملف</string>
+    <string name="download_started">جارٍ تحميل %1$s</string>
+    <string name="download_description">ملف من البروفايل %1$s</string>
+    <string name="download_failed">تعذر تحميل الملف: %1$s</string>
 
     <!-- صندوق الكتابة -->
     <string name="composer_hint">اكتب رسالة…</string>

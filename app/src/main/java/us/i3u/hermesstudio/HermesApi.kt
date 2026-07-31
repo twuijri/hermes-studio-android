@@ -1235,6 +1235,23 @@ class HermesApi(
         }
     }.getOrNull()
 
+    /**
+     * Builds the authenticated endpoint used by Studio's own Markdown file
+     * cards. DownloadManager cannot share this client's bearer interceptor, so
+     * the route also receives the token in the query exactly as the web client
+     * does for native browser downloads.
+     */
+    fun downloadUrl(filePath: String, fileName: String, profile: String?): String {
+        val path = unwrapStudioDownloadPath(filePath)
+        val params = buildList {
+            add("path=${enc(path)}")
+            add("name=${enc(inferDownloadFileName(path, fileName))}")
+            profile?.trim()?.takeIf { it.isNotBlank() }?.let { add("profile=${enc(it)}") }
+            token.takeIf { it.isNotBlank() }?.let { add("token=${enc(it)}") }
+        }
+        return url("/api/hermes/download?${params.joinToString("&")}")
+    }
+
     private fun cronJobAction(profile: String, jobId: String, action: String): CronJob {
         val result = call(
             path = "/api/hermes/jobs/${enc(jobId)}/$action",
