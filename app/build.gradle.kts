@@ -21,8 +21,8 @@ android {
         applicationId = "us.i3u.hermesstudio"
         minSdk = 26
         targetSdk = 34
-        versionCode = 18
-        versionName = "0.12.1"
+        versionCode = 19
+        versionName = "0.13.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -102,6 +102,8 @@ dependencies {
     }
     // Draws the Multiavatar SVG Studio generates for a profile without a picture.
     implementation("com.caverock:androidsvg-aar:1.4")
+    // Remote Petdex previews and active data-URI spritesheets.
+    implementation("io.coil-kt:coil-compose:2.6.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")

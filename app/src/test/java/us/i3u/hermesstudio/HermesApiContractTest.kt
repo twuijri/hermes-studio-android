@@ -449,6 +449,132 @@ class HermesApiContractTest {
     }
 
     @Test
+    fun `kanban board task and drag move use Studio contracts`() {
+        enqueue(
+            """{"boards":[{"slug":"product","name":"Product","is_current":true,"counts":{"todo":2,"done":1}}]}""",
+        )
+        val board = api.kanbanBoards().single()
+        assertEquals("product", board.slug)
+        assertEquals(3, board.total)
+
+        enqueue(
+            """{"tasks":[{"id":"task-1","title":"Native mobile board","status":"todo","priority":3,"assignee":"manager","created_at":1710000000,"skills":["android"]},{"id":"task-2","title":"Unassigned","status":"triage","assignee":null,"body":null,"result":null}]}""",
+        )
+        val tasks = api.kanbanTasks("product")
+        val task = tasks.first()
+        assertEquals("manager", task.assignee)
+        assertEquals(listOf("android"), task.skills)
+        assertNull(tasks.last().assignee)
+
+        enqueue("""{"results":[{"id":"task-1","ok":true}]}""")
+        api.moveKanbanTask("product", task.id, "review")
+
+        assertEquals("/api/hermes/kanban/boards", server.takeRequest().path)
+        assertEquals("/api/hermes/kanban?board=product", server.takeRequest().path)
+        val move = server.takeRequest()
+        assertEquals("/api/hermes/kanban/tasks/bulk?board=product", move.path)
+        val body = JSONObject(move.body.readUtf8())
+        assertEquals("review", body.getString("status"))
+        assertEquals("task-1", body.getJSONArray("ids").getString(0))
+    }
+
+    @Test
+    fun `skills target profile toggles and content editor match Studio`() {
+        enqueue(
+            """{"categories":[{"name":"Local","description":"Phone ready","skills":[{"name":"android","description":"Build Android","enabled":true,"source":"local","pinned":true,"useCount":7}]}],"archived":[]}""",
+        )
+        val skill = api.skills("manager", "codex").single().skills.single()
+        assertTrue(skill.pinned)
+        assertEquals(7, skill.useCount)
+        val list = server.takeRequest()
+        assertEquals("/api/hermes/skills?profile=manager&target=codex", list.path)
+        assertEquals("manager", list.getHeader("X-Hermes-Profile"))
+
+        enqueue("""{"success":true}""")
+        api.setSkillEnabled("manager", "android", false)
+        val toggle = server.takeRequest()
+        assertEquals("PUT", toggle.method)
+        assertEquals("/api/hermes/skills/toggle", toggle.path)
+        assertFalse(JSONObject(toggle.body.readUtf8()).getBoolean("enabled"))
+
+        enqueue("""{"success":true}""")
+        api.saveSkill("manager", "Local", "android", "# Android\nNative")
+        val save = server.takeRequest()
+        assertEquals("/api/hermes/skills/Local/android", save.path)
+        assertEquals("# Android\nNative", JSONObject(save.body.readUtf8()).getString("content"))
+    }
+
+    @Test
+    fun `plugin inventory and control preserve encoded keys`() {
+        enqueue(
+            """{"plugins":[{"key":"local/mobile tools","name":"Mobile tools","kind":"standalone","source":"local","configStatus":"configured","effectiveStatus":"enabled","version":"1.2.0","providesTools":["build"],"providesHooks":["after_run"],"requiresEnv":[{"name":"TOKEN"}]}],"warnings":["restart suggested"]}""",
+        )
+        val (plugins, warnings) = api.plugins()
+        val plugin = plugins.single()
+        assertTrue(plugin.enabled)
+        assertTrue(plugin.manageable)
+        assertEquals(listOf("TOKEN"), plugin.requiredEnv)
+        assertEquals(listOf("restart suggested"), warnings)
+        assertEquals("/api/hermes/plugins", server.takeRequest().path)
+
+        enqueue("""{"success":true}""")
+        api.setPluginEnabled(plugin.key, false)
+        assertEquals("/api/hermes/plugins/local%2Fmobile+tools/disable", server.takeRequest().path)
+    }
+
+    @Test
+    fun `MCP inventory preserves advanced config and native mutations`() {
+        enqueue(
+            """{"servers":[{"name":"filesystem","transport":"stdio","connected":true,"tools":3,"tools_registered":2,"tool_details":[{"name":"read_file","description":"Reads a file"}],"raw_config":{"command":"npx","args":["-y","server"],"env":{"ROOT":"/tmp"}}}]}""",
+        )
+        val mcp = api.mcpServers().single()
+        assertTrue(mcp.connected)
+        assertEquals("read_file", mcp.tools.single().name)
+        assertTrue(mcp.rawConfig.contains("ROOT"))
+        assertEquals("/api/hermes/mcp/servers", server.takeRequest().path)
+
+        enqueue("""{"success":true}""")
+        api.saveMcpServer("filesystem", "filesystem", mcp.rawConfig)
+        val update = server.takeRequest()
+        assertEquals("PATCH", update.method)
+        assertEquals("/api/hermes/mcp/servers/filesystem", update.path)
+        assertEquals("npx", JSONObject(update.body.readUtf8()).getJSONObject("config").getString("command"))
+
+        enqueue("""{"ok":true}""")
+        api.testMcpServer("filesystem")
+        assertEquals("/api/hermes/mcp/servers/filesystem/test", server.takeRequest().path)
+    }
+
+    @Test
+    fun `Petdex adoption and active controls stay in the app`() {
+        enqueue(
+            """{"generatedAt":"2026-07-31","total":1,"pets":[{"slug":"luna","displayName":"Luna","kind":"cat","submittedBy":"Hermes","previewUrl":"/pets/luna.png"}]}""",
+        )
+        assertEquals("Luna", api.petdex().single().displayName)
+
+        enqueue(
+            """{"pet":{"enabled":true,"slug":"luna","displayName":"Luna","kind":"cat","scale":1.25,"spritesheetDataUrl":"data:image/png;base64,AQID"}}""",
+        )
+        val active = api.adoptPet("luna")
+        assertEquals(1.25, active.scale, 0.001)
+        val adopt = server.takeRequest()
+        // Consume the manifest request before asserting adoption.
+        assertEquals("/api/hermes/petdex/manifest", adopt.path)
+        val adoptRequest = server.takeRequest()
+        assertEquals("/api/hermes/pets/adopt", adoptRequest.path)
+        assertEquals("luna", JSONObject(adoptRequest.body.readUtf8()).getString("slug"))
+
+        enqueue(
+            """{"pet":{"enabled":false,"slug":"luna","displayName":"Luna","kind":"cat","scale":0.8}}""",
+        )
+        api.updateActivePet(enabled = false, scale = .8)
+        val patch = server.takeRequest()
+        assertEquals("PATCH", patch.method)
+        assertEquals("/api/hermes/pets/active", patch.path)
+        assertFalse(JSONObject(patch.body.readUtf8()).getBoolean("enabled"))
+    }
+
+    @Test
     fun `HTTP status remains available to session recovery`() {
         enqueue("""{"error":"Unauthorized"}""", code = 401)
 

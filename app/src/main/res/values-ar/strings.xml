@@ -73,7 +73,6 @@
     <string name="agent_hub_plugins">الإضافات</string>
     <string name="agent_hub_mcp">MCP</string>
     <string name="agent_hub_pets">الحيوانات المرافقة</string>
-    <string name="agent_hub_studio_tool_note">يفتح هذه الأداة في الاستديو عبر المتصفح</string>
 
     <!-- المحادثة -->
     <string name="conversation_empty">أرسل رسالة إلى %1$s</string>
@@ -467,4 +466,104 @@
     <string name="agent_management">إدارة موحّدة للبوابات</string>
     <string name="agent_management_note">السماح للبروفايل الافتراضي بإدارة بوابات كل البروفايلات</string>
     <string name="agent_excluded_profiles">البروفايلات المستثناة من التشغيل التلقائي</string>
+
+    <string name="action_search">بحث</string>
+    <string name="agent_hub_kanban_note">لوحات جوال مع سحب المهام بين المراحل</string>
+    <string name="agent_hub_skills_note">تصفح مهارات الوكيل وتفعيلها واستيرادها وتحريرها</string>
+    <string name="agent_hub_plugins_note">فحص إضافات الاستديو والتحكم بها</string>
+    <string name="agent_hub_mcp_note">إدارة سيرفرات MCP وأدواتها</string>
+    <string name="agent_hub_pets_note">اختيار الحيوان المرافق وضبطه</string>
+
+    <string name="kanban_title">كانبان</string>
+    <string name="kanban_mobile_note">لوحات مهام الاستديو بتجربة مخصصة للجوال</string>
+    <string name="kanban_add">إضافة مهمة</string>
+    <string name="kanban_default_board">اللوحة الافتراضية</string>
+    <string name="kanban_drag_hint">اضغط مطولًا على البطاقة ثم اسحب يمينًا أو يسارًا لنقلها بين المراحل.</string>
+    <string name="kanban_empty">لا توجد مهام هنا</string>
+    <string name="kanban_empty_note">أنشئ مهمة أو امسح البحث لعرض اللوحة.</string>
+    <string name="kanban_move">نقل المهمة</string>
+    <string name="kanban_hold_drag">اضغط مطولًا واسحب</string>
+    <string name="kanban_task">المهمة</string>
+    <string name="kanban_details">التفاصيل</string>
+    <string name="kanban_priority">الأولوية</string>
+    <string name="kanban_assignee">المكلّف</string>
+    <string name="kanban_unassigned">بلا مكلّف</string>
+    <string name="kanban_skills">المهارات</string>
+    <string name="kanban_result">النتيجة</string>
+    <string name="kanban_summary">آخر ملخص</string>
+    <string name="kanban_comments">التعليقات · %1$d</string>
+    <string name="kanban_comment_hint">أضف تعليقًا</string>
+    <string name="kanban_comment_add">نشر التعليق</string>
+    <string name="kanban_runs">التشغيلات · %1$d</string>
+    <string name="kanban_new_task">مهمة جديدة</string>
+    <string name="kanban_task_title">عنوان المهمة</string>
+    <string name="kanban_description">الوصف</string>
+    <string name="kanban_priority_value">الأولوية %1$d</string>
+    <string name="kanban_skills_hint">المهارات مفصولة بفاصلة</string>
+    <string name="kanban_send_triage">إرسالها للفرز أولًا</string>
+    <string name="kanban_created">تم إنشاء المهمة</string>
+    <string name="kanban_status_triage">الفرز</string>
+    <string name="kanban_status_todo">قيد الانتظار</string>
+    <string name="kanban_status_scheduled">مجدولة</string>
+    <string name="kanban_status_ready">جاهزة</string>
+    <string name="kanban_status_running">قيد التنفيذ</string>
+    <string name="kanban_status_blocked">متوقفة</string>
+    <string name="kanban_status_review">المراجعة</string>
+    <string name="kanban_status_done">مكتملة</string>
+    <string name="kanban_status_archived">مؤرشفة</string>
+
+    <string name="skills_title">المهارات</string>
+    <string name="skills_subtitle">البروفايل: %1$s</string>
+    <string name="skills_import">استيراد مهارة ZIP</string>
+    <string name="skills_search">البحث في المهارات</string>
+    <string name="skills_empty">لا توجد مهارات مطابقة</string>
+    <string name="skills_empty_note">جرّب هدفًا آخر أو امسح البحث أو استورد حزمة مهارة.</string>
+    <string name="skills_no_description">بلا وصف</string>
+    <string name="skills_uses">%1$d استخدام</string>
+    <string name="skills_pin">تثبيت المهارة</string>
+    <string name="skills_skill">المهارة</string>
+    <string name="skills_delete_title">حذف المهارة؟</string>
+    <string name="skills_delete_note">ستُحذف %1$s من الاستديو.</string>
+    <string name="skills_imported">تم استيراد %1$s</string>
+    <string name="skills_saved">تم حفظ المهارة</string>
+
+    <string name="plugins_title">الإضافات</string>
+    <string name="plugins_summary">%1$d مفعّلة · %2$d إجماليًا</string>
+    <string name="plugins_search">البحث في الإضافات</string>
+    <string name="plugins_enabled_only">المفعّلة فقط</string>
+    <string name="plugins_empty">لا توجد إضافات مطابقة</string>
+    <string name="plugins_empty_note">امسح الفلتر أو ثبّت الإضافات من Hermes Studio.</string>
+    <string name="plugins_tools">%1$d أداة</string>
+    <string name="plugins_hooks">%1$d خطاف</string>
+    <string name="plugins_env">%1$d قيمة بيئة</string>
+    <string name="plugins_managed_by_studio">تُدار بواسطة الاستديو</string>
+
+    <string name="mcp_title">سيرفرات MCP</string>
+    <string name="mcp_summary">%1$d متصلة · %2$d إجماليًا</string>
+    <string name="mcp_reload_all">إعادة تحميل كل السيرفرات</string>
+    <string name="mcp_add">إضافة سيرفر MCP</string>
+    <string name="mcp_empty">لا توجد سيرفرات MCP</string>
+    <string name="mcp_empty_note">أضف أمرًا محليًا أو سيرفر HTTP/SSE بعيدًا.</string>
+    <string name="mcp_tools">%1$d/%2$d أداة مسجلة</string>
+    <string name="mcp_test">اختبار</string>
+    <string name="mcp_reload">إعادة تحميل</string>
+    <string name="mcp_delete_title">حذف سيرفر MCP؟</string>
+    <string name="mcp_delete_note">سيُحذف %1$s وإعداده.</string>
+    <string name="mcp_edit">تعديل السيرفر</string>
+    <string name="mcp_name">اسم السيرفر</string>
+    <string name="mcp_command">الأمر</string>
+    <string name="mcp_url">رابط السيرفر</string>
+    <string name="mcp_args">المعاملات، واحد في كل سطر</string>
+    <string name="mcp_advanced_json">إعداد JSON المتقدم</string>
+
+    <string name="pets_title">الحيوانات المرافقة</string>
+    <string name="pets_count">%1$d حيوان مرافق</string>
+    <string name="pets_active">الحيوان النشط</string>
+    <string name="pets_scale">الحجم: %1$.1f×</string>
+    <string name="pets_search">البحث في الحيوانات</string>
+    <string name="pets_empty">لم نجد حيوانات مرافقة</string>
+    <string name="pets_empty_note">امسح البحث أو حدّث قائمة Petdex.</string>
+    <string name="pets_adopt">اختيار</string>
+    <string name="pets_adopted_button">تم اختياره</string>
+    <string name="pets_adopted">تم تفعيل الحيوان المرافق الجديد</string>
 </resources>

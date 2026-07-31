@@ -14,6 +14,7 @@ import kotlinx.coroutines.withContext
 enum class Screen {
     Loading, Onboarding, Login, Chats, Groups, AgentHub, Conversation, Room, Profiles,
     Settings, MoreSettings, SettingsGroup, Channels, Channel, CronJobs, CronJob, CronHistory,
+    Kanban, KanbanTask, Skills, Skill, Plugins, Mcp, Pets,
 }
 
 /** Settings is a short list of these; each opens its own screen. */
@@ -123,6 +124,11 @@ data class UiState(
     val cronHistoryLoading: Boolean = false,
     val cronRunLoading: Boolean = false,
     val openCronRun: CronRunDetail? = null,
+    val kanban: KanbanUiState = KanbanUiState(),
+    val skillsUi: SkillsUiState = SkillsUiState(),
+    val pluginsUi: PluginsUiState = PluginsUiState(),
+    val mcpUi: McpUiState = McpUiState(),
+    val petsUi: PetsUiState = PetsUiState(),
     val notice: String? = null,
 )
 
@@ -958,6 +964,478 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return sent
     }
 
+    // ── native agent tools ───────────────────────────────────────────────
+
+    fun openKanban() {
+        _state.update { it.copy(screen = Screen.Kanban, error = null, notice = null) }
+        loadKanban()
+    }
+
+    fun selectKanbanBoard(slug: String) {
+        _state.update { it.copy(kanban = it.kanban.copy(board = slug, openTask = null)) }
+        loadKanban(refreshBoards = false)
+    }
+
+    fun refreshKanban() = loadKanban()
+
+    private fun loadKanban(refreshBoards: Boolean = true) {
+        val old = _state.value.kanban
+        _state.update { it.copy(kanban = it.kanban.copy(loading = true)) }
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val boards = if (refreshBoards || old.boards.isEmpty()) api.kanbanBoards() else old.boards
+                    val selected = old.board.takeIf { slug -> boards.any { it.slug == slug } }
+                        ?: boards.firstOrNull { it.isCurrent }?.slug
+                        ?: boards.firstOrNull()?.slug.orEmpty()
+                    Triple(boards, api.kanbanTasks(selected), api.kanbanAssignees(selected))
+                }
+            }.onSuccess { (boards, tasks, assignees) ->
+                val selected = _state.value.kanban.board.takeIf { slug -> boards.any { it.slug == slug } }
+                    ?: boards.firstOrNull { it.isCurrent }?.slug
+                    ?: boards.firstOrNull()?.slug.orEmpty()
+                _state.update {
+                    it.copy(kanban = it.kanban.copy(
+                        loading = false,
+                        boards = boards,
+                        board = selected,
+                        tasks = tasks,
+                        assignees = assignees,
+                    ))
+                }
+            }.onFailure { failure ->
+                _state.update {
+                    it.copy(kanban = it.kanban.copy(loading = false), error = failure.readableMessage(localized))
+                }
+            }
+        }
+    }
+
+    fun createKanbanTask(
+        title: String,
+        body: String,
+        assignee: String,
+        priority: Int,
+        skills: List<String>,
+        triage: Boolean,
+    ) {
+        val clean = title.trim()
+        if (clean.isBlank()) return
+        val board = _state.value.kanban.board
+        _state.update { it.copy(kanban = it.kanban.copy(actionId = "new"), error = null) }
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    api.createKanbanTask(board, clean, body.trim(), assignee, priority, skills, triage)
+                }
+            }.onSuccess { task ->
+                _state.update {
+                    it.copy(
+                        kanban = it.kanban.copy(actionId = null, tasks = it.kanban.tasks + task),
+                        notice = str(R.string.kanban_created),
+                    )
+                }
+            }.onFailure { failure ->
+                _state.update {
+                    it.copy(kanban = it.kanban.copy(actionId = null), error = failure.readableMessage(localized))
+                }
+            }
+        }
+    }
+
+    fun moveKanbanTask(task: KanbanTask, status: String) {
+        if (task.status == status) return
+        val board = _state.value.kanban.board
+        _state.update {
+            it.copy(
+                kanban = it.kanban.copy(
+                    actionId = task.id,
+                    tasks = it.kanban.tasks.map { current ->
+                        if (current.id == task.id) current.copy(status = status) else current
+                    },
+                ),
+                error = null,
+            )
+        }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.moveKanbanTask(board, task.id, status) } }
+                .onSuccess {
+                    _state.update { state -> state.copy(kanban = state.kanban.copy(actionId = null)) }
+                    if (_state.value.screen == Screen.KanbanTask) loadKanbanTask(task.id)
+                }
+                .onFailure { failure ->
+                    _state.update { state ->
+                        state.copy(
+                            kanban = state.kanban.copy(
+                                actionId = null,
+                                tasks = state.kanban.tasks.map { current ->
+                                    if (current.id == task.id) task else current
+                                },
+                            ),
+                            error = failure.readableMessage(localized),
+                        )
+                    }
+                }
+        }
+    }
+
+    fun openKanbanTask(task: KanbanTask) {
+        _state.update {
+            it.copy(
+                screen = Screen.KanbanTask,
+                kanban = it.kanban.copy(openTask = KanbanTaskDetail(task, null, emptyList(), emptyList())),
+                error = null,
+            )
+        }
+        loadKanbanTask(task.id)
+    }
+
+    private fun loadKanbanTask(id: String) {
+        val board = _state.value.kanban.board
+        _state.update { it.copy(kanban = it.kanban.copy(loading = true)) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.kanbanTask(board, id) } }
+                .onSuccess { detail ->
+                    _state.update {
+                        it.copy(
+                            kanban = it.kanban.copy(
+                                loading = false,
+                                openTask = detail,
+                                tasks = it.kanban.tasks.map { task ->
+                                    if (task.id == detail.task.id) detail.task else task
+                                },
+                            ),
+                        )
+                    }
+                }
+                .onFailure { failure ->
+                    _state.update {
+                        it.copy(kanban = it.kanban.copy(loading = false), error = failure.readableMessage(localized))
+                    }
+                }
+        }
+    }
+
+    fun addKanbanComment(taskId: String, body: String) {
+        val clean = body.trim()
+        if (clean.isBlank()) return
+        val board = _state.value.kanban.board
+        _state.update { it.copy(kanban = it.kanban.copy(actionId = taskId), error = null) }
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) { api.addKanbanComment(board, taskId, clean, _state.value.account) }
+            }.onSuccess { loadKanbanTask(taskId) }
+                .onFailure { failure ->
+                    _state.update {
+                        it.copy(kanban = it.kanban.copy(actionId = null), error = failure.readableMessage(localized))
+                    }
+                }
+        }
+    }
+
+    fun assignKanbanTask(taskId: String, assignee: String) {
+        val board = _state.value.kanban.board
+        _state.update { it.copy(kanban = it.kanban.copy(actionId = taskId), error = null) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.assignKanbanTask(board, taskId, assignee) } }
+                .onSuccess { loadKanbanTask(taskId) }
+                .onFailure { failure ->
+                    _state.update {
+                        it.copy(kanban = it.kanban.copy(actionId = null), error = failure.readableMessage(localized))
+                    }
+                }
+        }
+    }
+
+    fun openSkills() {
+        _state.update { it.copy(screen = Screen.Skills, error = null, notice = null) }
+        loadSkills()
+    }
+
+    fun selectSkillsTarget(target: String) {
+        _state.update { it.copy(skillsUi = it.skillsUi.copy(target = target, openSkill = null)) }
+        loadSkills()
+    }
+
+    fun refreshSkills() = loadSkills()
+
+    private fun loadSkills() {
+        val profile = currentProfile()
+        val target = _state.value.skillsUi.target
+        _state.update { it.copy(skillsUi = it.skillsUi.copy(loading = true)) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.skills(profile, target) } }
+                .onSuccess { categories ->
+                    _state.update { it.copy(skillsUi = it.skillsUi.copy(loading = false, categories = categories)) }
+                }
+                .onFailure { failure ->
+                    _state.update {
+                        it.copy(skillsUi = it.skillsUi.copy(loading = false), error = failure.readableMessage(localized))
+                    }
+                }
+        }
+    }
+
+    fun openSkill(category: String, skill: SkillInfo) {
+        _state.update { it.copy(screen = Screen.Skill, skillsUi = it.skillsUi.copy(loading = true), error = null) }
+        val profile = currentProfile()
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.skillContent(profile, category, skill.name) } }
+                .onSuccess { content ->
+                    _state.update {
+                        it.copy(skillsUi = it.skillsUi.copy(loading = false, openSkill = OpenSkill(category, skill, content)))
+                    }
+                }
+                .onFailure { failure ->
+                    _state.update {
+                        it.copy(skillsUi = it.skillsUi.copy(loading = false), error = failure.readableMessage(localized))
+                    }
+                }
+        }
+    }
+
+    fun saveSkill(content: String) = mutateOpenSkill { profile, open ->
+        api.saveSkill(profile, open.category, open.skill.name, content)
+    }
+
+    fun toggleSkill(skill: SkillInfo, enabled: Boolean) {
+        val profile = currentProfile()
+        _state.update { it.copy(skillsUi = it.skillsUi.copy(actionName = skill.name), error = null) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.setSkillEnabled(profile, skill.name, enabled) } }
+                .onSuccess {
+                    updateSkill(skill.name) { it.copy(enabled = enabled) }
+                    _state.update { it.copy(skillsUi = it.skillsUi.copy(actionName = null)) }
+                }
+                .onFailure { failure -> toolSkillFailure(failure) }
+        }
+    }
+
+    fun pinSkill(skill: SkillInfo, pinned: Boolean) {
+        val profile = currentProfile()
+        _state.update { it.copy(skillsUi = it.skillsUi.copy(actionName = skill.name), error = null) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.setSkillPinned(profile, skill.name, pinned) } }
+                .onSuccess {
+                    updateSkill(skill.name) { it.copy(pinned = pinned) }
+                    _state.update { it.copy(skillsUi = it.skillsUi.copy(actionName = null)) }
+                }
+                .onFailure { failure -> toolSkillFailure(failure) }
+        }
+    }
+
+    fun deleteOpenSkill() {
+        val open = _state.value.skillsUi.openSkill ?: return
+        val profile = currentProfile()
+        _state.update { it.copy(skillsUi = it.skillsUi.copy(actionName = open.skill.name), error = null) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.deleteSkill(profile, open.category, open.skill.name) } }
+                .onSuccess {
+                    _state.update { it.copy(screen = Screen.Skills, skillsUi = it.skillsUi.copy(openSkill = null, actionName = null)) }
+                    loadSkills()
+                }
+                .onFailure { failure -> toolSkillFailure(failure) }
+        }
+    }
+
+    fun importSkill(bytes: ByteArray, filename: String, category: String = "Imported") {
+        val profile = currentProfile()
+        _state.update { it.copy(skillsUi = it.skillsUi.copy(actionName = "import"), error = null) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.importSkill(profile, category, bytes, filename) } }
+                .onSuccess { name ->
+                    _state.update {
+                        it.copy(skillsUi = it.skillsUi.copy(actionName = null), notice = str(R.string.skills_imported, name))
+                    }
+                    loadSkills()
+                }
+                .onFailure { failure -> toolSkillFailure(failure) }
+        }
+    }
+
+    private fun mutateOpenSkill(block: (String, OpenSkill) -> Unit) {
+        val open = _state.value.skillsUi.openSkill ?: return
+        val profile = currentProfile()
+        _state.update { it.copy(skillsUi = it.skillsUi.copy(actionName = open.skill.name), error = null) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { block(profile, open) } }
+                .onSuccess {
+                    _state.update {
+                        it.copy(
+                            skillsUi = it.skillsUi.copy(actionName = null, openSkill = open),
+                            notice = str(R.string.skills_saved),
+                        )
+                    }
+                }
+                .onFailure { failure -> toolSkillFailure(failure) }
+        }
+    }
+
+    private fun updateSkill(name: String, transform: (SkillInfo) -> SkillInfo) {
+        _state.update { state ->
+            val categories = state.skillsUi.categories.map { category ->
+                category.copy(skills = category.skills.map { if (it.name == name) transform(it) else it })
+            }
+            val open = state.skillsUi.openSkill?.let {
+                if (it.skill.name == name) it.copy(skill = transform(it.skill)) else it
+            }
+            state.copy(skillsUi = state.skillsUi.copy(categories = categories, openSkill = open))
+        }
+    }
+
+    private fun toolSkillFailure(failure: Throwable) {
+        _state.update {
+            it.copy(skillsUi = it.skillsUi.copy(actionName = null), error = failure.readableMessage(localized))
+        }
+    }
+
+    fun openPlugins() {
+        _state.update { it.copy(screen = Screen.Plugins, error = null, notice = null) }
+        loadPlugins()
+    }
+
+    fun refreshPlugins() = loadPlugins()
+
+    private fun loadPlugins() {
+        _state.update { it.copy(pluginsUi = it.pluginsUi.copy(loading = true)) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.plugins() } }
+                .onSuccess { (plugins, warnings) ->
+                    _state.update {
+                        it.copy(pluginsUi = it.pluginsUi.copy(loading = false, plugins = plugins, warnings = warnings))
+                    }
+                }
+                .onFailure { failure ->
+                    _state.update {
+                        it.copy(pluginsUi = it.pluginsUi.copy(loading = false), error = failure.readableMessage(localized))
+                    }
+                }
+        }
+    }
+
+    fun togglePlugin(plugin: HermesPlugin, enabled: Boolean) {
+        _state.update { it.copy(pluginsUi = it.pluginsUi.copy(actionKey = plugin.key), error = null) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.setPluginEnabled(plugin.key, enabled) } }
+                .onSuccess { loadPlugins() }
+                .onFailure { failure ->
+                    _state.update {
+                        it.copy(pluginsUi = it.pluginsUi.copy(actionKey = null), error = failure.readableMessage(localized))
+                    }
+                }
+        }
+    }
+
+    fun openMcp() {
+        _state.update { it.copy(screen = Screen.Mcp, error = null, notice = null) }
+        loadMcp()
+    }
+
+    fun refreshMcp() = loadMcp()
+
+    private fun loadMcp() {
+        _state.update { it.copy(mcpUi = it.mcpUi.copy(loading = true)) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.mcpServers() } }
+                .onSuccess { servers ->
+                    _state.update { it.copy(mcpUi = it.mcpUi.copy(loading = false, actionName = null, servers = servers)) }
+                }
+                .onFailure { failure ->
+                    _state.update {
+                        it.copy(mcpUi = it.mcpUi.copy(loading = false, actionName = null), error = failure.readableMessage(localized))
+                    }
+                }
+        }
+    }
+
+    fun saveMcpServer(originalName: String?, name: String, config: String) {
+        if (name.isBlank()) return
+        _state.update { it.copy(mcpUi = it.mcpUi.copy(actionName = originalName ?: "new"), error = null) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.saveMcpServer(originalName, name.trim(), config) } }
+                .onSuccess { loadMcp() }
+                .onFailure { failure ->
+                    _state.update {
+                        it.copy(mcpUi = it.mcpUi.copy(actionName = null), error = failure.readableMessage(localized))
+                    }
+                }
+        }
+    }
+
+    fun deleteMcpServer(name: String) = mutateMcp(name) { api.deleteMcpServer(name) }
+
+    fun testMcpServer(name: String) = mutateMcp(name) { api.testMcpServer(name) }
+
+    fun reloadMcpServer(name: String? = null) = mutateMcp(name ?: "all") { api.reloadMcpServer(name) }
+
+    private fun mutateMcp(name: String, block: () -> Unit) {
+        _state.update { it.copy(mcpUi = it.mcpUi.copy(actionName = name), error = null) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { block() } }
+                .onSuccess { loadMcp() }
+                .onFailure { failure ->
+                    _state.update {
+                        it.copy(mcpUi = it.mcpUi.copy(actionName = null), error = failure.readableMessage(localized))
+                    }
+                }
+        }
+    }
+
+    fun openPets() {
+        _state.update { it.copy(screen = Screen.Pets, error = null, notice = null) }
+        loadPets()
+    }
+
+    fun refreshPets() = loadPets()
+
+    private fun loadPets() {
+        _state.update { it.copy(petsUi = it.petsUi.copy(loading = true)) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.petdex() to api.activePet() } }
+                .onSuccess { (pets, active) ->
+                    _state.update { it.copy(petsUi = it.petsUi.copy(loading = false, actionSlug = null, pets = pets, active = active)) }
+                }
+                .onFailure { failure ->
+                    _state.update {
+                        it.copy(petsUi = it.petsUi.copy(loading = false, actionSlug = null), error = failure.readableMessage(localized))
+                    }
+                }
+        }
+    }
+
+    fun adoptPet(slug: String) {
+        _state.update { it.copy(petsUi = it.petsUi.copy(actionSlug = slug), error = null) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.adoptPet(slug) } }
+                .onSuccess { active ->
+                    _state.update {
+                        it.copy(petsUi = it.petsUi.copy(actionSlug = null, active = active), notice = str(R.string.pets_adopted))
+                    }
+                }
+                .onFailure { failure ->
+                    _state.update {
+                        it.copy(petsUi = it.petsUi.copy(actionSlug = null), error = failure.readableMessage(localized))
+                    }
+                }
+        }
+    }
+
+    fun setActivePet(enabled: Boolean? = null, scale: Double? = null) {
+        val slug = _state.value.petsUi.active?.slug ?: return
+        _state.update { it.copy(petsUi = it.petsUi.copy(actionSlug = slug), error = null) }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.updateActivePet(enabled, scale) } }
+                .onSuccess { active ->
+                    _state.update { it.copy(petsUi = it.petsUi.copy(actionSlug = null, active = active)) }
+                }
+                .onFailure { failure ->
+                    _state.update {
+                        it.copy(petsUi = it.petsUi.copy(actionSlug = null), error = failure.readableMessage(localized))
+                    }
+                }
+        }
+    }
+
     // ── settings ──────────────────────────────────────────────────────────
 
     // ── settings groups ───────────────────────────────────────────────────
@@ -1711,6 +2189,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val target = when (state.screen) {
                 Screen.Channel -> Screen.Channels
                 Screen.CronJob, Screen.CronHistory -> Screen.CronJobs
+                Screen.KanbanTask -> Screen.Kanban
+                Screen.Skill -> Screen.Skills
+                Screen.Kanban, Screen.Skills, Screen.Plugins, Screen.Mcp, Screen.Pets -> Screen.AgentHub
                 Screen.Channels, Screen.SettingsGroup, Screen.CronJobs -> state.toolReturnScreen
                 Screen.MoreSettings -> Screen.Settings
                 else -> when (state.tab) {
@@ -1730,6 +2211,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 editingCronJob = state.editingCronJob.takeUnless { state.screen == Screen.CronJob },
                 cronEditorJobId = state.cronEditorJobId.takeUnless { state.screen == Screen.CronJob },
                 openCronRun = null,
+                kanban = state.kanban.copy(
+                    openTask = state.kanban.openTask.takeUnless { state.screen == Screen.KanbanTask },
+                ),
+                skillsUi = state.skillsUi.copy(
+                    openSkill = state.skillsUi.openSkill.takeUnless { state.screen == Screen.Skill },
+                ),
             )
         }
     }
@@ -1737,6 +2224,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun show(screen: Screen) = _state.update { it.copy(screen = screen, error = null) }
 
     fun dismissError() = _state.update { it.copy(error = null) }
+
+    /** Lets device pickers surface a readable error without leaking UI concerns into them. */
+    fun showToolError(failure: Throwable) = _state.update {
+        it.copy(error = failure.readableMessage(localized))
+    }
 
     fun signOut() {
         cancelActiveRun(abort = true)

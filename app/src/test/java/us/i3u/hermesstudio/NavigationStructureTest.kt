@@ -10,6 +10,7 @@ class NavigationStructureTest {
 
     private val viewModel = File("src/main/java/us/i3u/hermesstudio/AppViewModel.kt").readText()
     private val activity = File("src/main/java/us/i3u/hermesstudio/MainActivity.kt").readText()
+    private val kanban = File("src/main/java/us/i3u/hermesstudio/KanbanScreens.kt").readText()
 
     @Test
     fun agentIsAFirstClassRootTab() {
@@ -30,12 +31,14 @@ class NavigationStructureTest {
             "SettingsGroup.Models",
             "SettingsGroup.Profile",
             "SettingsGroup.Agent",
-            "openStudioTool(\"kanban\")",
-            "openStudioTool(\"skills\")",
-            "openStudioTool(\"plugins\")",
-            "openStudioTool(\"mcp\")",
-            "openStudioTool(\"petdex\")",
+            "openKanban()",
+            "openSkills()",
+            "openPlugins()",
+            "openMcp()",
+            "openPets()",
         ).forEach { destination -> assertTrue("Agent hub lost $destination", hub.contains(destination)) }
+        assertFalse("Agent tools must never open the website", hub.contains("ACTION_VIEW"))
+        assertFalse("Agent tools must never open the website", hub.contains("openStudioTool"))
     }
 
     @Test
@@ -64,5 +67,13 @@ class NavigationStructureTest {
         ).forEach { group -> assertTrue("More settings lost $group", more.contains(group)) }
         listOf("SettingsGroup.Agent", "SettingsGroup.Memory", "SettingsGroup.Models", "SettingsGroup.Profile")
             .forEach { duplicate -> assertFalse("More settings duplicates $duplicate", more.contains(duplicate)) }
+    }
+
+    @Test
+    fun kanbanHasNativeAccessibleMovementInBothDirections() {
+        assertTrue(kanban.contains("detectDragGesturesAfterLongPress"))
+        assertTrue(kanban.contains("LocalLayoutDirection.current"))
+        assertTrue(kanban.contains("graphicsLayer { translationX = dragX }"))
+        assertTrue(kanban.contains("DropdownMenuItem"))
     }
 }

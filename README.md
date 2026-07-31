@@ -7,7 +7,7 @@ Not affiliated with EKKOLearnAI.
 The Studio web UI is built for the desktop, so this app talks to the same HTTP API
 directly and renders a native, phone-shaped interface instead of wrapping a web view.
 
-## What works today (v0.12)
+## What works today (v0.13)
 
 - **Replies stream in as they are written**, over the same `/chat-run` socket the
   web UI uses, with a stop button that calls the run off mid-sentence. If the
@@ -21,8 +21,18 @@ directly and renders a native, phone-shaped interface instead of wrapping a web 
   into it over the room socket and watch replies arrive, or delete the room
 - **Agent tools have their own bottom tab**, beside Chats and Groups. Jobs,
   Kanban, Channels, Skills, Plugins, MCP, Pets, Memory and Models now have one
-  predictable home; the tools already native to the app stay native, while the
-  remaining Studio-only tools open their exact page in the browser
+  predictable home. Every one opens a native Android screen; none sends you to
+  the desktop website
+- **Mobile Kanban inspired by modern task apps**: switch boards, search, create a
+  task, inspect its result and runs, assign it, and comment. Hold a card and drag
+  left or right to move it between stages, or use its Move menu for precise and
+  accessible control
+- **Skills are native and editable** for Hermes, Claude, and Codex targets: search,
+  enable, pin, import a ZIP, open `SKILL.md`, edit it, save it, or delete a local
+  skill
+- **Plugins, MCP, and Petdex are native too**: inspect or toggle standalone plugins;
+  add, edit, test, reload, and delete MCP servers without losing advanced JSON;
+  and adopt, enable, or resize a companion from the phone
 - **Channels are set up from the app**, on their own screen: enter a bot token (or
   the app id, secret and the rest — each channel asks for exactly the fields the
   server maps), turn a channel on or off, or remove its credentials. Saving writes
@@ -140,6 +150,12 @@ the previous version.
 | Scheduled jobs | `GET` · `POST /api/hermes/jobs` · `PATCH` · `DELETE /api/hermes/jobs/{id}` |
 | Pause / resume / run a job | `POST /api/hermes/jobs/{id}/pause` · `resume` · `run` |
 | Scheduled job run history | `GET /api/cron-history` · `GET /api/cron-history/{jobId}/{fileName}` |
+| Kanban boards and tasks | `GET /api/hermes/kanban/boards` · `GET` / `POST /api/hermes/kanban` · `POST /api/hermes/kanban/tasks/bulk` |
+| Kanban detail, comments, and assignees | `GET /api/hermes/kanban/{id}` · `POST /api/hermes/kanban/{id}/comments` · `GET /api/hermes/kanban/assignees` |
+| Skills | `GET /api/hermes/skills` · `GET` / `PUT` / `DELETE /api/hermes/skills/{category}/{name}` · `PUT /api/hermes/skills/toggle` · `pin` |
+| Plugins | `GET /api/hermes/plugins` · `POST /api/hermes/plugins/{key}/enable` · `disable` |
+| MCP servers | `GET` · `POST /api/hermes/mcp/servers` · `PATCH` / `DELETE /api/hermes/mcp/servers/{name}` · `POST /api/hermes/mcp/reload` |
+| Petdex and active pet | `GET /api/hermes/petdex/manifest` · `GET` / `PATCH /api/hermes/pets/active` · `POST /api/hermes/pets/adopt` |
 | App mark | `GET /logo.png` (static, cached on the device) |
 
 Both sockets authenticate with the same bearer token, passed in the Socket.IO
@@ -159,7 +175,6 @@ written to the app cache, uploaded, and deleted immediately.
 - Editing a profile's avatar from the app, not only reading it
 - Voice settings (STT and TTS providers) from the app
 - Push notifications for finished runs
-- Kanban
 
 ## Build locally
 
@@ -173,7 +188,8 @@ push, so a local SDK is optional.
 ### Running it without a Studio server
 
 `tools/mock-studio.py` answers the REST endpoints the app calls, with sample profiles,
-conversations, accounts, settings, model providers, a room and scheduled jobs — enough
+conversations, accounts, settings, model providers, a room, scheduled jobs, Kanban,
+skills, plugins, MCP servers, and Petdex — enough
 to open and edit every screen. It does not
 speak Socket.IO, which makes it a good way to exercise the REST fallback: messages
 still get answered, just not word by word.

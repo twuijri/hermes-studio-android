@@ -3,7 +3,6 @@ package us.i3u.hermesstudio
 import android.Manifest
 import android.app.Activity
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
@@ -43,7 +42,6 @@ import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -153,7 +151,8 @@ private fun App(viewModel: AppViewModel = viewModel()) {
     when (state.screen) {
         Screen.Conversation, Screen.Room, Screen.Profiles, Screen.Settings,
         Screen.MoreSettings, Screen.SettingsGroup, Screen.Channels, Screen.Channel, Screen.CronJobs,
-        Screen.CronJob, Screen.CronHistory,
+        Screen.CronJob, Screen.CronHistory, Screen.Kanban, Screen.KanbanTask, Screen.Skills,
+        Screen.Skill, Screen.Plugins, Screen.Mcp, Screen.Pets,
         -> BackHandler { viewModel.back() }
         Screen.Groups, Screen.AgentHub -> BackHandler { viewModel.showTab(Tab.Chats) }
         else -> Unit
@@ -179,6 +178,13 @@ private fun App(viewModel: AppViewModel = viewModel()) {
         Screen.CronJobs -> CronJobsScreen(state, viewModel)
         Screen.CronJob -> CronJobEditorScreen(state, viewModel)
         Screen.CronHistory -> CronHistoryScreen(state, viewModel)
+        Screen.Kanban -> KanbanScreen(state, viewModel)
+        Screen.KanbanTask -> KanbanTaskScreen(state, viewModel)
+        Screen.Skills -> SkillsScreen(state, viewModel)
+        Screen.Skill -> SkillScreen(state, viewModel)
+        Screen.Plugins -> PluginsScreen(state, viewModel)
+        Screen.Mcp -> McpScreen(state, viewModel)
+        Screen.Pets -> PetsScreen(state, viewModel)
         Screen.Login -> LoginScreen(state, viewModel)
         Screen.Chats -> ChatsScreen(state, viewModel)
         Screen.Groups -> GroupsScreen(state, viewModel)
@@ -1637,12 +1643,7 @@ private fun LanguageAction(state: UiState, viewModel: AppViewModel) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AgentHubScreen(state: UiState, viewModel: AppViewModel) {
-    val context = LocalContext.current
     val channels = state.serverConfig?.channels.orEmpty()
-    val openStudioTool: (String) -> Unit = { route ->
-        val url = "${state.baseUrl.trimEnd('/')}/#/hermes/$route"
-        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-    }
 
     Scaffold(
         topBar = {
@@ -1677,9 +1678,8 @@ private fun AgentHubScreen(state: UiState, viewModel: AppViewModel) {
             SettingsRow(
                 icon = Icons.Filled.ViewKanban,
                 label = stringResource(R.string.agent_hub_kanban),
-                value = stringResource(R.string.agent_hub_studio_tool_note),
-                onClick = { openStudioTool("kanban") },
-                trailing = { Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null) },
+                value = stringResource(R.string.agent_hub_kanban_note),
+                onClick = { viewModel.openKanban() },
             )
             SettingsRow(
                 icon = Icons.Filled.Hub,
@@ -1698,30 +1698,26 @@ private fun AgentHubScreen(state: UiState, viewModel: AppViewModel) {
             SettingsRow(
                 icon = Icons.Filled.School,
                 label = stringResource(R.string.agent_hub_skills),
-                value = stringResource(R.string.agent_hub_studio_tool_note),
-                onClick = { openStudioTool("skills") },
-                trailing = { Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null) },
+                value = stringResource(R.string.agent_hub_skills_note),
+                onClick = { viewModel.openSkills() },
             )
             SettingsRow(
                 icon = Icons.Filled.Extension,
                 label = stringResource(R.string.agent_hub_plugins),
-                value = stringResource(R.string.agent_hub_studio_tool_note),
-                onClick = { openStudioTool("plugins") },
-                trailing = { Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null) },
+                value = stringResource(R.string.agent_hub_plugins_note),
+                onClick = { viewModel.openPlugins() },
             )
             SettingsRow(
                 icon = Icons.Filled.Dns,
                 label = stringResource(R.string.agent_hub_mcp),
-                value = stringResource(R.string.agent_hub_studio_tool_note),
-                onClick = { openStudioTool("mcp") },
-                trailing = { Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null) },
+                value = stringResource(R.string.agent_hub_mcp_note),
+                onClick = { viewModel.openMcp() },
             )
             SettingsRow(
                 icon = Icons.Filled.Pets,
                 label = stringResource(R.string.agent_hub_pets),
-                value = stringResource(R.string.agent_hub_studio_tool_note),
-                onClick = { openStudioTool("petdex") },
-                trailing = { Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null) },
+                value = stringResource(R.string.agent_hub_pets_note),
+                onClick = { viewModel.openPets() },
             )
             SettingsRow(
                 icon = Icons.Filled.Psychology,

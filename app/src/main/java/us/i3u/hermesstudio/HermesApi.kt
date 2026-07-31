@@ -727,6 +727,365 @@ class HermesApi(
         return RoomDetail(id = roomId, name = name, agents = agentNames, messages = messages)
     }
 
+    // ── native agent tools ───────────────────────────────────────────────
+
+    fun kanbanBoards(): List<KanbanBoard> {
+        val array = call("/api/hermes/kanban/boards").optJSONArray("boards") ?: JSONArray()
+        return (0 until array.length()).mapNotNull { index ->
+            val item = array.optJSONObject(index) ?: return@mapNotNull null
+            KanbanBoard(
+                slug = item.optString("slug"),
+                name = item.optString("name").ifBlank { item.optString("slug") },
+                description = item.optString("description").takeIf(String::isNotBlank),
+                color = item.optString("color").takeIf(String::isNotBlank),
+                total = item.optInt("total", item.optJSONObject("counts")?.let { counts ->
+                    counts.keys().asSequence().sumOf { counts.optInt(it) }
+                } ?: 0),
+                isCurrent = item.optBoolean("is_current", item.optBoolean("isCurrent")),
+            ).takeIf { it.slug.isNotBlank() }
+        }
+    }
+
+    fun kanbanTasks(board: String): List<KanbanTask> {
+        val suffix = if (board.isBlank()) "" else "?board=${enc(board)}"
+        val array = call("/api/hermes/kanban$suffix").optJSONArray("tasks") ?: JSONArray()
+        return parseKanbanTasks(array)
+    }
+
+    fun kanbanAssignees(board: String): List<String> {
+        val suffix = if (board.isBlank()) "" else "?board=${enc(board)}"
+        val array = call("/api/hermes/kanban/assignees$suffix").optJSONArray("assignees") ?: JSONArray()
+        return (0 until array.length()).mapNotNull { index ->
+            when (val value = array.opt(index)) {
+                is JSONObject -> value.optString("name").takeIf(String::isNotBlank)
+                is String -> value.takeIf(String::isNotBlank)
+                else -> null
+            }
+        }
+    }
+
+    fun kanbanTask(board: String, id: String): KanbanTaskDetail {
+        val suffix = if (board.isBlank()) "" else "?board=${enc(board)}"
+        val result = call("/api/hermes/kanban/${enc(id)}$suffix")
+        val task = parseKanbanTask(result.optJSONObject("task") ?: result)
+            ?: throw HermesException("Task response was empty")
+        val comments = result.optJSONArray("comments") ?: JSONArray()
+        val runs = result.optJSONArray("runs") ?: JSONArray()
+        return KanbanTaskDetail(
+            task = task,
+            latestSummary = result.optString("latest_summary").takeIf(String::isNotBlank),
+            comments = (0 until comments.length()).mapNotNull { index ->
+                comments.optJSONObject(index)?.let {
+                    KanbanComment(
+                        id = it.optString("id"),
+                        author = it.optString("author").ifBlank { "Hermes" },
+                        body = it.optString("body"),
+                        createdAt = it.optLong("created_at"),
+                    )
+                }
+            },
+            runs = (0 until runs.length()).mapNotNull { index ->
+                runs.optJSONObject(index)?.let {
+                    KanbanRun(
+                        id = it.optString("id"),
+                        status = it.optString("status"),
+                        summary = it.optString("summary").takeIf(String::isNotBlank),
+                        error = it.optString("error").takeIf(String::isNotBlank),
+                        startedAt = it.optLong("started_at"),
+                    )
+                }
+            },
+        )
+    }
+
+    fun createKanbanTask(
+        board: String,
+        title: String,
+        body: String,
+        assignee: String,
+        priority: Int,
+        skills: List<String>,
+        triage: Boolean,
+    ): KanbanTask {
+        val suffix = if (board.isBlank()) "" else "?board=${enc(board)}"
+        val payload = JSONObject()
+            .put("title", title)
+            .put("priority", priority)
+            .put("triage", triage)
+            .put("skills", JSONArray(skills))
+            .apply {
+                if (body.isNotBlank()) put("body", body)
+                if (assignee.isNotBlank()) put("assignee", assignee)
+            }
+        val result = call("/api/hermes/kanban$suffix", "POST", payload)
+        return parseKanbanTask(result.optJSONObject("task") ?: result)
+            ?: throw HermesException("Task creation returned no task")
+    }
+
+    fun moveKanbanTask(board: String, id: String, status: String) {
+        val suffix = if (board.isBlank()) "" else "?board=${enc(board)}"
+        call(
+            "/api/hermes/kanban/tasks/bulk$suffix",
+            "POST",
+            JSONObject().put("ids", JSONArray(listOf(id))).put("status", status),
+        )
+    }
+
+    fun assignKanbanTask(board: String, id: String, assignee: String) {
+        val suffix = if (board.isBlank()) "" else "?board=${enc(board)}"
+        call(
+            "/api/hermes/kanban/${enc(id)}/assign$suffix",
+            "POST",
+            JSONObject().put("profile", assignee),
+        )
+    }
+
+    fun addKanbanComment(board: String, id: String, body: String, author: String?) {
+        val suffix = if (board.isBlank()) "" else "?board=${enc(board)}"
+        call(
+            "/api/hermes/kanban/${enc(id)}/comments$suffix",
+            "POST",
+            JSONObject().put("body", body).apply { if (!author.isNullOrBlank()) put("author", author) },
+        )
+    }
+
+    fun skills(profile: String, target: String): List<SkillCategory> {
+        val result = call(
+            "/api/hermes/skills?profile=${enc(profile)}&target=${enc(target)}",
+            profile = profile,
+        )
+        val categories = result.optJSONArray("categories") ?: JSONArray()
+        return (0 until categories.length()).mapNotNull { index ->
+            val category = categories.optJSONObject(index) ?: return@mapNotNull null
+            val items = category.optJSONArray("skills") ?: JSONArray()
+            SkillCategory(
+                name = category.optString("name"),
+                description = category.optString("description"),
+                skills = (0 until items.length()).mapNotNull { skillIndex ->
+                    items.optJSONObject(skillIndex)?.let(::parseSkill)
+                },
+            )
+        }
+    }
+
+    fun skillContent(profile: String, category: String, name: String): String =
+        call(
+            "/api/hermes/skills/${enc(category)}/${enc(name)}",
+            profile = profile,
+        ).optString("content")
+
+    fun saveSkill(profile: String, category: String, name: String, content: String) {
+        call(
+            "/api/hermes/skills/${enc(category)}/${enc(name)}",
+            "PUT",
+            JSONObject().put("content", content),
+            profile,
+        )
+    }
+
+    fun setSkillEnabled(profile: String, name: String, enabled: Boolean) {
+        call(
+            "/api/hermes/skills/toggle",
+            "PUT",
+            JSONObject().put("name", name).put("enabled", enabled),
+            profile,
+        )
+    }
+
+    fun setSkillPinned(profile: String, name: String, pinned: Boolean) {
+        call(
+            "/api/hermes/skills/pin",
+            "PUT",
+            JSONObject().put("name", name).put("pinned", pinned),
+            profile,
+        )
+    }
+
+    fun deleteSkill(profile: String, category: String, name: String) {
+        call("/api/hermes/skills/${enc(category)}/${enc(name)}", "DELETE", profile = profile)
+    }
+
+    fun importSkill(profile: String, category: String, bytes: ByteArray, filename: String): String {
+        val result = multipart(
+            path = "/api/hermes/skills/import",
+            field = "files",
+            bytes = bytes,
+            filename = filename,
+            mime = "application/zip",
+            fields = mapOf("category" to category),
+            profile = profile,
+        )
+        return result.optString("name").ifBlank { filename.substringBeforeLast('.') }
+    }
+
+    fun plugins(): Pair<List<HermesPlugin>, List<String>> {
+        val result = call("/api/hermes/plugins")
+        val array = result.optJSONArray("plugins") ?: JSONArray()
+        val plugins = (0 until array.length()).mapNotNull { index ->
+            val item = array.optJSONObject(index) ?: return@mapNotNull null
+            val required = item.optJSONArray("requiresEnv") ?: JSONArray()
+            HermesPlugin(
+                key = item.optString("key"),
+                name = item.optString("name").ifBlank { item.optString("key") },
+                kind = item.optString("kind"),
+                source = item.optString("source"),
+                configured = item.optString("configStatus") == "configured",
+                enabled = item.optString("effectiveStatus") == "enabled",
+                version = item.optString("version").takeIf(String::isNotBlank),
+                description = item.optString("description").takeIf(String::isNotBlank),
+                author = item.optString("author").takeIf(String::isNotBlank),
+                tools = strings(item.optJSONArray("providesTools")),
+                hooks = strings(item.optJSONArray("providesHooks")),
+                requiredEnv = (0 until required.length()).mapNotNull { envIndex ->
+                    when (val env = required.opt(envIndex)) {
+                        is String -> env
+                        is JSONObject -> firstNonBlank(env, "name", "key")
+                        else -> null
+                    }
+                },
+            ).takeIf { it.key.isNotBlank() }
+        }
+        return plugins to strings(result.optJSONArray("warnings"))
+    }
+
+    fun setPluginEnabled(key: String, enabled: Boolean) {
+        call(
+            "/api/hermes/plugins/${enc(key)}/${if (enabled) "enable" else "disable"}",
+            "POST",
+        )
+    }
+
+    fun mcpServers(): List<McpServer> {
+        val array = call("/api/hermes/mcp/servers").optJSONArray("servers") ?: JSONArray()
+        return (0 until array.length()).mapNotNull { index ->
+            val item = array.optJSONObject(index) ?: return@mapNotNull null
+            val details = item.optJSONArray("tool_details") ?: JSONArray()
+            val config = item.optJSONObject("raw_config") ?: JSONObject()
+            McpServer(
+                name = item.optString("name"),
+                transport = item.optString("transport").ifBlank { config.optString("transport", "stdio") },
+                connected = item.optBoolean("connected"),
+                toolCount = item.optInt("tools"),
+                registeredToolCount = item.optInt("tools_registered"),
+                tools = (0 until details.length()).mapNotNull { toolIndex ->
+                    details.optJSONObject(toolIndex)?.let {
+                        McpTool(it.optString("name"), it.optString("description").takeIf(String::isNotBlank))
+                    }
+                },
+                error = item.optString("error").takeIf(String::isNotBlank),
+                rawConfig = config.toString(2),
+            ).takeIf { it.name.isNotBlank() }
+        }
+    }
+
+    fun saveMcpServer(originalName: String?, name: String, rawConfig: String) {
+        val config = runCatching { JSONObject(rawConfig) }
+            .getOrElse { throw HermesException("Server configuration is not valid JSON") }
+        if (originalName == null) {
+            call("/api/hermes/mcp/servers", "POST", JSONObject().put("name", name).put("config", config))
+        } else {
+            call(
+                "/api/hermes/mcp/servers/${enc(originalName)}",
+                "PATCH",
+                JSONObject().put("config", config),
+            )
+        }
+    }
+
+    fun deleteMcpServer(name: String) {
+        call("/api/hermes/mcp/servers/${enc(name)}", "DELETE")
+    }
+
+    fun testMcpServer(name: String) {
+        call("/api/hermes/mcp/servers/${enc(name)}/test", "POST")
+    }
+
+    fun reloadMcpServer(name: String? = null) {
+        call("/api/hermes/mcp/reload${name?.let { "?server=${enc(it)}" }.orEmpty()}", "POST")
+    }
+
+    fun petdex(): List<PetdexPet> {
+        val array = call("/api/hermes/petdex/manifest").optJSONArray("pets") ?: JSONArray()
+        return (0 until array.length()).mapNotNull { index ->
+            val item = array.optJSONObject(index) ?: return@mapNotNull null
+            PetdexPet(
+                slug = item.optString("slug"),
+                displayName = item.optString("displayName").ifBlank { item.optString("slug") },
+                kind = item.optString("kind"),
+                submittedBy = item.optString("submittedBy").takeIf(String::isNotBlank),
+                previewUrl = item.optString("previewUrl").takeIf(String::isNotBlank),
+            ).takeIf { it.slug.isNotBlank() }
+        }
+    }
+
+    fun activePet(): ActivePet? {
+        val item = call("/api/hermes/pets/active").optJSONObject("pet") ?: return null
+        return ActivePet(
+            enabled = item.optBoolean("enabled", true),
+            slug = item.optString("slug"),
+            displayName = item.optString("displayName").ifBlank { item.optString("slug") },
+            kind = item.optString("kind"),
+            scale = item.optDouble("scale", 1.0),
+            spritesheetDataUrl = item.optString("spritesheetDataUrl").takeIf(String::isNotBlank),
+        )
+    }
+
+    fun adoptPet(slug: String): ActivePet {
+        val item = call("/api/hermes/pets/adopt", "POST", JSONObject().put("slug", slug))
+            .optJSONObject("pet") ?: throw HermesException("Adoption returned no pet")
+        return ActivePet(
+            enabled = item.optBoolean("enabled", true),
+            slug = item.optString("slug"),
+            displayName = item.optString("displayName").ifBlank { item.optString("slug") },
+            kind = item.optString("kind"),
+            scale = item.optDouble("scale", 1.0),
+            spritesheetDataUrl = item.optString("spritesheetDataUrl").takeIf(String::isNotBlank),
+        )
+    }
+
+    fun updateActivePet(enabled: Boolean? = null, scale: Double? = null): ActivePet? {
+        val payload = JSONObject().apply {
+            enabled?.let { put("enabled", it) }
+            scale?.let { put("scale", it) }
+        }
+        val item = call("/api/hermes/pets/active", "PATCH", payload).optJSONObject("pet") ?: return null
+        return ActivePet(
+            enabled = item.optBoolean("enabled", true),
+            slug = item.optString("slug"),
+            displayName = item.optString("displayName").ifBlank { item.optString("slug") },
+            kind = item.optString("kind"),
+            scale = item.optDouble("scale", 1.0),
+            spritesheetDataUrl = item.optString("spritesheetDataUrl").takeIf(String::isNotBlank),
+        )
+    }
+
+    private fun parseKanbanTasks(array: JSONArray): List<KanbanTask> =
+        (0 until array.length()).mapNotNull { parseKanbanTask(array.optJSONObject(it)) }
+
+    private fun parseKanbanTask(item: JSONObject?): KanbanTask? {
+        item ?: return null
+        return KanbanTask(
+            id = item.optString("id"),
+            title = item.optString("title"),
+            body = firstNonBlank(item, "body"),
+            assignee = firstNonBlank(item, "assignee"),
+            status = item.optString("status").ifBlank { "triage" },
+            priority = item.optInt("priority"),
+            createdAt = item.optLong("created_at"),
+            result = firstNonBlank(item, "result"),
+            skills = strings(item.optJSONArray("skills")),
+        ).takeIf { it.id.isNotBlank() && it.title.isNotBlank() }
+    }
+
+    private fun parseSkill(item: JSONObject): SkillInfo = SkillInfo(
+        name = item.optString("name"),
+        description = item.optString("description"),
+        enabled = item.optBoolean("enabled", true),
+        source = item.optString("source").ifBlank { "local" },
+        pinned = item.optBoolean("pinned"),
+        useCount = item.optInt("useCount", item.optInt("use_count")),
+    )
+
     private fun multipart(
         path: String,
         field: String,
@@ -734,6 +1093,7 @@ class HermesApi(
         filename: String,
         mime: String,
         fields: Map<String, String> = emptyMap(),
+        profile: String? = null,
     ): JSONObject {
         val body = MultipartBody.Builder().setType(MultipartBody.FORM).apply {
             fields.forEach { (name, value) -> addFormDataPart(name, value) }
@@ -741,6 +1101,7 @@ class HermesApi(
         }.build()
         val builder = Request.Builder().url(url(path)).post(body)
         if (token.isNotBlank()) builder.header("Authorization", "Bearer $token")
+        if (!profile.isNullOrBlank()) builder.header("X-Hermes-Profile", profile)
         builder.header("Accept", "application/json")
 
         client.newCall(builder.build()).execute().use { response ->

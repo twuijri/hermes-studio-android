@@ -121,6 +121,49 @@ USERS = [
 LOCKS = [{"ip": "192.0.2.10", "type": "password", "failures": 5,
           "lockedUntil": int(time.time() * 1000) + 15 * 60 * 1000}]
 ACCOUNT_AVATAR = {"type": "default", "seed": "twuijri"}
+KANBAN_TASKS = [
+    {"id": "k1", "title": "تصميم تجربة كانبان للجوال", "body": "بطاقات واضحة وسحب بين المراحل.",
+     "assignee": "manager", "status": "running", "priority": 4, "created_at": 1785520000,
+     "skills": ["android", "product-design"]},
+    {"id": "k2", "title": "مراجعة ترجمة الواجهة", "body": "فحص العربية والإنجليزية على شاشة صغيرة.",
+     "assignee": "barq", "status": "review", "priority": 2, "created_at": 1785510000,
+     "skills": ["summarize"]},
+    {"id": "k3", "title": "اختبار MCP", "body": "التأكد من اتصال سيرفر filesystem.",
+     "assignee": None, "status": "todo", "priority": 1, "created_at": 1785500000, "skills": []},
+    {"id": "k4", "title": "نشر نسخة أندرويد", "body": "إنشاء APK موقّع وإرفاقه في GitHub.",
+     "assignee": "deep-engineer", "status": "done", "priority": 3, "created_at": 1785400000,
+     "result": "تم النشر بنجاح", "skills": ["android"]},
+]
+KANBAN_COMMENTS = {"k1": [{"id": "c1", "author": "twuijri", "body": "خل السحب واضح على الجوال.", "created_at": 1785520100}]}
+SKILL_CATEGORIES = [{"name": "Local", "description": "مهارات خاصة بالاستديو", "skills": [
+    {"name": "android", "description": "بناء وفحص تطبيقات Android", "enabled": True, "source": "local", "pinned": True, "useCount": 12},
+    {"name": "product-design", "description": "تصميم واجهات جوال انسيابية", "enabled": True, "source": "local", "pinned": False, "useCount": 8},
+    {"name": "web-research", "description": "جمع المعلومات من المصادر", "enabled": False, "source": "builtin", "pinned": False, "useCount": 4},
+]}]
+SKILL_CONTENT = {"android": "# Android\n\nBuild, test, and verify native Android applications.",
+                 "product-design": "# Product design\n\nDesign clear mobile-first interfaces.",
+                 "web-research": "# Web research\n\nResearch using primary sources."}
+PLUGINS = [
+    {"key": "mobile-notifications", "name": "Mobile notifications", "kind": "standalone", "source": "local",
+     "configStatus": "configured", "effectiveStatus": "enabled", "version": "1.2.0",
+     "description": "يرسل إشعارات عند اكتمال مهام الوكيل.", "author": "Hermes",
+     "providesTools": ["notify"], "providesHooks": ["after_run"], "requiresEnv": []},
+    {"key": "bundled-memory", "name": "Memory", "kind": "builtin", "source": "bundled",
+     "configStatus": "configured", "effectiveStatus": "enabled", "version": "0.6.35",
+     "description": "إضافة الذاكرة المدمجة.", "author": "Hermes",
+     "providesTools": ["memory_search", "memory_write"], "providesHooks": [], "requiresEnv": []},
+]
+MCP_SERVERS = [
+    {"name": "filesystem", "transport": "stdio", "connected": True, "tools": 2, "tools_registered": 2,
+     "tool_details": [{"name": "read_file", "description": "Read a file"}, {"name": "list_directory", "description": "List files"}],
+     "raw_config": {"transport": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]}},
+]
+PETS = [
+    {"slug": "luna", "displayName": "Luna", "kind": "cat", "submittedBy": "Hermes", "previewUrl": "/mock/pet.png"},
+    {"slug": "barq", "displayName": "Barq", "kind": "fox", "submittedBy": "Studio", "previewUrl": "/mock/pet.png"},
+]
+ACTIVE_PET = {"enabled": True, "slug": "luna", "displayName": "Luna", "kind": "cat", "scale": 1.0,
+              "spritesheetDataUrl": "data:image/png;base64," + base64.b64encode(LOGO).decode()}
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
@@ -144,7 +187,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
-        if path == '/logo.png':
+        if path in ('/logo.png', '/mock/pet.png'):
             self.send_response(200)
             self.send_header('Content-Type', 'image/png')
             self.send_header('Content-Length', str(len(LOGO)))
@@ -175,11 +218,30 @@ class Handler(BaseHTTPRequestHandler):
         elif re.fullmatch(r'/api/hermes/jobs/[^/]+', path):
             job = self.find_job(unquote(path.rsplit('/', 1)[1]))
             self.send({"job": job}, 200 if job else 404)
-        elif path == '/api/hermes/skills':
-            self.send({"categories": [{"name": "local", "description": "", "skills": [
-                {"name": "web-research", "description": "", "enabled": True},
-                {"name": "summarize", "description": "", "enabled": True}
-            ]}], "archived": []})
+        elif path == '/api/hermes/kanban/boards':
+            counts = {}
+            for task in KANBAN_TASKS: counts[task['status']] = counts.get(task['status'], 0) + 1
+            self.send({"boards": [{"slug": "default", "name": "تطوير التطبيق", "description": "مهام الجوال",
+                                   "is_current": True, "counts": counts, "total": len(KANBAN_TASKS)}]})
+        elif path == '/api/hermes/kanban': self.send({"tasks": KANBAN_TASKS})
+        elif path == '/api/hermes/kanban/assignees':
+            self.send({"assignees": [{"name": p['name'], "on_disk": True} for p in PROFILES]})
+        elif re.fullmatch(r'/api/hermes/kanban/[^/]+', path):
+            task_id = unquote(path.rsplit('/', 1)[1])
+            task = next((item for item in KANBAN_TASKS if item['id'] == task_id), None)
+            self.send({"task": task, "latest_summary": task.get('result') if task else None,
+                       "comments": KANBAN_COMMENTS.get(task_id, []), "events": [],
+                       "runs": [{"id": "run-1", "status": "success", "summary": "تم التشغيل", "started_at": 1785520000}] if task else []},
+                      200 if task else 404)
+        elif path == '/api/hermes/skills': self.send({"categories": SKILL_CATEGORIES, "archived": []})
+        elif re.fullmatch(r'/api/hermes/skills/[^/]+/[^/]+', path):
+            name = unquote(path.rsplit('/', 1)[1])
+            self.send({"content": SKILL_CONTENT.get(name, f"# {name}\n")})
+        elif path == '/api/hermes/plugins': self.send({"plugins": PLUGINS, "warnings": []})
+        elif path == '/api/hermes/mcp/servers': self.send({"servers": MCP_SERVERS})
+        elif path == '/api/hermes/petdex/manifest':
+            self.send({"generatedAt": "2026-07-31", "total": len(PETS), "pets": PETS})
+        elif path == '/api/hermes/pets/active': self.send({"pet": ACTIVE_PET})
         elif path == '/api/cron-history':
             job_id = parse_qs(parsed.query).get('jobId', ['morning-brief'])[0]
             self.send({"runs": [{"jobId": job_id, "fileName": "2026-07-31T09-00-00.md", "runTime": "2026-07-31 09:00:00", "size": len(RUN_OUTPUT.encode()), "hasOutput": True, "status": "ok"}]})
@@ -190,6 +252,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = self.path.split('?')[0]
+        if path == '/api/hermes/skills/import':
+            length = int(self.headers.get('Content-Length') or 0)
+            self.rfile.read(length)
+            self.send({"name": "imported-skill"})
+            return
         body = self.json_body()
         if path == '/api/auth/login': self.send({"token": "mock-token"})
         elif path in ('/api/auth/change-password', '/api/auth/change-username'):
@@ -222,6 +289,46 @@ class Handler(BaseHTTPRequestHandler):
             }
             JOBS.append(job)
             self.send({"job": job})
+        elif path == '/api/hermes/kanban':
+            task = {"id": f"k{len(KANBAN_TASKS) + 1}", "title": body.get('title', 'New task'),
+                    "body": body.get('body'), "assignee": body.get('assignee'),
+                    "status": "triage" if body.get('triage') else "todo", "priority": body.get('priority', 1),
+                    "created_at": int(time.time()), "skills": body.get('skills', [])}
+            KANBAN_TASKS.append(task)
+            self.send({"task": task})
+        elif path == '/api/hermes/kanban/tasks/bulk':
+            for task in KANBAN_TASKS:
+                if task['id'] in body.get('ids', []): task['status'] = body.get('status', task['status'])
+            self.send({"results": [{"id": item, "ok": True} for item in body.get('ids', [])]})
+        elif re.fullmatch(r'/api/hermes/kanban/[^/]+/assign', path):
+            task_id = unquote(path.split('/')[-2])
+            task = next((item for item in KANBAN_TASKS if item['id'] == task_id), None)
+            if task: task['assignee'] = body.get('profile')
+            self.send({"task": task}, 200 if task else 404)
+        elif re.fullmatch(r'/api/hermes/kanban/[^/]+/comments', path):
+            task_id = unquote(path.split('/')[-2])
+            comment = {"id": f"c{int(time.time())}", "author": body.get('author', 'phone'),
+                       "body": body.get('body', ''), "created_at": int(time.time())}
+            KANBAN_COMMENTS.setdefault(task_id, []).append(comment)
+            self.send({"comment": comment})
+        elif re.fullmatch(r'/api/hermes/plugins/[^/]+/(enable|disable)', path):
+            key, action = path.rsplit('/', 2)[1:]
+            plugin = next((item for item in PLUGINS if item['key'] == unquote(key)), None)
+            if plugin: plugin['effectiveStatus'] = 'enabled' if action == 'enable' else 'disabled'
+            self.send({"success": True})
+        elif path == '/api/hermes/mcp/servers':
+            config = body.get('config', {})
+            MCP_SERVERS.append({"name": body.get('name'), "transport": config.get('transport', 'stdio'),
+                                "connected": True, "tools": 0, "tools_registered": 0,
+                                "tool_details": [], "raw_config": config})
+            self.send({"success": True})
+        elif path == '/api/hermes/mcp/reload' or re.fullmatch(r'/api/hermes/mcp/servers/[^/]+/test', path):
+            self.send({"success": True})
+        elif path == '/api/hermes/pets/adopt':
+            pet = next((item for item in PETS if item['slug'] == body.get('slug')), PETS[0])
+            ACTIVE_PET.update({"enabled": True, "slug": pet['slug'], "displayName": pet['displayName'],
+                               "kind": pet['kind'], "scale": 1.0})
+            self.send({"pet": ACTIVE_PET})
         elif re.fullmatch(r'/api/hermes/jobs/[^/]+/(pause|resume|run)', path):
             job_id, action = path.rsplit('/', 2)[1:]
             job = self.find_job(unquote(job_id))
@@ -261,12 +368,37 @@ class Handler(BaseHTTPRequestHandler):
             ACCOUNT_AVATAR.clear()
             ACCOUNT_AVATAR.update(avatar if isinstance(avatar, dict) else {"type": "default"})
             self.send({"success": True})
+        elif path == '/api/hermes/skills/toggle':
+            for category in SKILL_CATEGORIES:
+                for skill in category['skills']:
+                    if skill['name'] == body.get('name'): skill['enabled'] = body.get('enabled', True)
+            self.send({"success": True})
+        elif path == '/api/hermes/skills/pin':
+            for category in SKILL_CATEGORIES:
+                for skill in category['skills']:
+                    if skill['name'] == body.get('name'): skill['pinned'] = body.get('pinned', False)
+            self.send({"success": True})
+        elif re.fullmatch(r'/api/hermes/skills/[^/]+/[^/]+', path):
+            SKILL_CONTENT[unquote(path.rsplit('/', 1)[1])] = body.get('content', '')
+            self.send({"success": True})
         else:
             self.send({"success": True})
 
     def do_PATCH(self):
         path = urlparse(self.path).path
         body = self.json_body()
+        if re.fullmatch(r'/api/hermes/mcp/servers/[^/]+', path):
+            name = unquote(path.rsplit('/', 1)[1])
+            server = next((item for item in MCP_SERVERS if item['name'] == name), None)
+            if server:
+                server['raw_config'] = body.get('config', server['raw_config'])
+                server['transport'] = server['raw_config'].get('transport', server['transport'])
+            self.send({"success": True})
+            return
+        if path == '/api/hermes/pets/active':
+            ACTIVE_PET.update(body)
+            self.send({"pet": ACTIVE_PET})
+            return
         match = re.fullmatch(r'/api/hermes/jobs/([^/]+)', path)
         job = self.find_job(unquote(match.group(1))) if match else None
         if not job: self.send({"error": {"message": "Job not found"}}, 404); return
@@ -293,6 +425,20 @@ class Handler(BaseHTTPRequestHandler):
         if user_match:
             USERS[:] = [user for user in USERS if user['id'] != int(user_match.group(1))]
             self.send({"users": USERS})
+            return
+        mcp_match = re.fullmatch(r'/api/hermes/mcp/servers/([^/]+)', path)
+        if mcp_match:
+            name = unquote(mcp_match.group(1))
+            MCP_SERVERS[:] = [server for server in MCP_SERVERS if server['name'] != name]
+            self.send({"success": True})
+            return
+        skill_match = re.fullmatch(r'/api/hermes/skills/([^/]+)/([^/]+)', path)
+        if skill_match:
+            name = unquote(skill_match.group(2))
+            for category in SKILL_CATEGORIES:
+                category['skills'][:] = [skill for skill in category['skills'] if skill['name'] != name]
+            SKILL_CONTENT.pop(name, None)
+            self.send({"success": True})
             return
         match = re.fullmatch(r'/api/hermes/jobs/([^/]+)', path)
         job = self.find_job(unquote(match.group(1))) if match else None

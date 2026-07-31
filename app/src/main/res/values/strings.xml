@@ -74,7 +74,6 @@
     <string name="agent_hub_plugins">Plugins</string>
     <string name="agent_hub_mcp">MCP</string>
     <string name="agent_hub_pets">Pets</string>
-    <string name="agent_hub_studio_tool_note">Opens this Studio tool in your browser</string>
 
     <!-- Conversation -->
     <string name="conversation_empty">Send a message to %1$s</string>
@@ -468,4 +467,104 @@
     <string name="agent_management">Unified gateway management</string>
     <string name="agent_management_note">Let the default profile manage every profile gateway</string>
     <string name="agent_excluded_profiles">Profiles excluded from automatic start</string>
+
+    <string name="action_search">Search</string>
+    <string name="agent_hub_kanban_note">Mobile boards with drag-to-move tasks</string>
+    <string name="agent_hub_skills_note">Browse, enable, import, and edit agent skills</string>
+    <string name="agent_hub_plugins_note">Inspect and control Studio plugins</string>
+    <string name="agent_hub_mcp_note">Manage MCP servers and their tools</string>
+    <string name="agent_hub_pets_note">Choose and configure your companion</string>
+
+    <string name="kanban_title">Kanban</string>
+    <string name="kanban_mobile_note">Your Studio task boards, built for mobile</string>
+    <string name="kanban_add">Add task</string>
+    <string name="kanban_default_board">Default board</string>
+    <string name="kanban_drag_hint">Hold a card, then drag left or right to move it between stages.</string>
+    <string name="kanban_empty">No tasks here</string>
+    <string name="kanban_empty_note">Create a task or clear the search to see the board.</string>
+    <string name="kanban_move">Move task</string>
+    <string name="kanban_hold_drag">Hold and drag</string>
+    <string name="kanban_task">Task</string>
+    <string name="kanban_details">Details</string>
+    <string name="kanban_priority">Priority</string>
+    <string name="kanban_assignee">Assignee</string>
+    <string name="kanban_unassigned">Unassigned</string>
+    <string name="kanban_skills">Skills</string>
+    <string name="kanban_result">Result</string>
+    <string name="kanban_summary">Latest summary</string>
+    <string name="kanban_comments">Comments · %1$d</string>
+    <string name="kanban_comment_hint">Add a comment</string>
+    <string name="kanban_comment_add">Post comment</string>
+    <string name="kanban_runs">Runs · %1$d</string>
+    <string name="kanban_new_task">New task</string>
+    <string name="kanban_task_title">Task title</string>
+    <string name="kanban_description">Description</string>
+    <string name="kanban_priority_value">Priority %1$d</string>
+    <string name="kanban_skills_hint">Skills, separated by commas</string>
+    <string name="kanban_send_triage">Send to triage first</string>
+    <string name="kanban_created">Task created</string>
+    <string name="kanban_status_triage">Triage</string>
+    <string name="kanban_status_todo">To do</string>
+    <string name="kanban_status_scheduled">Scheduled</string>
+    <string name="kanban_status_ready">Ready</string>
+    <string name="kanban_status_running">Running</string>
+    <string name="kanban_status_blocked">Blocked</string>
+    <string name="kanban_status_review">Review</string>
+    <string name="kanban_status_done">Done</string>
+    <string name="kanban_status_archived">Archived</string>
+
+    <string name="skills_title">Skills</string>
+    <string name="skills_subtitle">Profile: %1$s</string>
+    <string name="skills_import">Import skill ZIP</string>
+    <string name="skills_search">Search skills</string>
+    <string name="skills_empty">No matching skills</string>
+    <string name="skills_empty_note">Try another target, clear the search, or import a skill package.</string>
+    <string name="skills_no_description">No description</string>
+    <string name="skills_uses">%1$d uses</string>
+    <string name="skills_pin">Pin skill</string>
+    <string name="skills_skill">Skill</string>
+    <string name="skills_delete_title">Delete skill?</string>
+    <string name="skills_delete_note">%1$s will be removed from Studio.</string>
+    <string name="skills_imported">Imported %1$s</string>
+    <string name="skills_saved">Skill saved</string>
+
+    <string name="plugins_title">Plugins</string>
+    <string name="plugins_summary">%1$d enabled · %2$d total</string>
+    <string name="plugins_search">Search plugins</string>
+    <string name="plugins_enabled_only">Enabled only</string>
+    <string name="plugins_empty">No matching plugins</string>
+    <string name="plugins_empty_note">Clear the filter or install plugins in Hermes Studio.</string>
+    <string name="plugins_tools">%1$d tools</string>
+    <string name="plugins_hooks">%1$d hooks</string>
+    <string name="plugins_env">%1$d environment values</string>
+    <string name="plugins_managed_by_studio">Managed by Studio</string>
+
+    <string name="mcp_title">MCP servers</string>
+    <string name="mcp_summary">%1$d connected · %2$d total</string>
+    <string name="mcp_reload_all">Reload all servers</string>
+    <string name="mcp_add">Add MCP server</string>
+    <string name="mcp_empty">No MCP servers</string>
+    <string name="mcp_empty_note">Add a local command or remote HTTP/SSE server.</string>
+    <string name="mcp_tools">%1$d/%2$d tools registered</string>
+    <string name="mcp_test">Test</string>
+    <string name="mcp_reload">Reload</string>
+    <string name="mcp_delete_title">Delete MCP server?</string>
+    <string name="mcp_delete_note">%1$s and its configuration will be removed.</string>
+    <string name="mcp_edit">Edit server</string>
+    <string name="mcp_name">Server name</string>
+    <string name="mcp_command">Command</string>
+    <string name="mcp_url">Server URL</string>
+    <string name="mcp_args">Arguments, one per line</string>
+    <string name="mcp_advanced_json">Advanced JSON</string>
+
+    <string name="pets_title">Petdex</string>
+    <string name="pets_count">%1$d companions</string>
+    <string name="pets_active">Active companion</string>
+    <string name="pets_scale">Size: %1$.1f×</string>
+    <string name="pets_search">Search companions</string>
+    <string name="pets_empty">No companions found</string>
+    <string name="pets_empty_note">Clear the search or refresh the Petdex manifest.</string>
+    <string name="pets_adopt">Adopt</string>
+    <string name="pets_adopted_button">Adopted</string>
+    <string name="pets_adopted">Your new companion is active</string>
 </resources>
