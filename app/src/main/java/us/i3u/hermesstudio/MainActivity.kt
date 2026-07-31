@@ -44,6 +44,7 @@ import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Rule
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
@@ -52,7 +53,22 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material.icons.filled.AccountTree
+import androidx.compose.material.icons.filled.Cable
+import androidx.compose.material.icons.filled.Compress
+import androidx.compose.material.icons.filled.DisplaySettings
+import androidx.compose.material.icons.filled.Forum
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.HourglassBottom
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.ModelTraining
+import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.PrivacyTip
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.VpnLock
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Person
@@ -64,7 +80,6 @@ import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PowerSettingsNew
-import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Pets
@@ -111,7 +126,9 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.FileProvider
 import java.io.File
@@ -1217,7 +1234,7 @@ private fun Composer(
                 sheet = ComposerSheet.Reasoning
             }
             ToolbarChip(
-                icon = Icons.Filled.WbSunny,
+                icon = Icons.Filled.ModelTraining,
                 label = state.sessionModel ?: stringResource(R.string.sheet_model),
             ) {
                 viewModel.loadModels()
@@ -1342,7 +1359,7 @@ private fun OptionsSheet(
         HorizontalDivider(color = MaterialTheme.colorScheme.outline)
         SheetTitle(stringResource(R.string.sheet_conversation))
         SheetRow(
-            icon = Icons.Filled.WbSunny,
+            icon = Icons.Filled.ModelTraining,
             label = stringResource(R.string.sheet_model),
             detail = state.sessionModel ?: stringResource(R.string.sheet_profile_default),
             onClick = onModel,
@@ -1682,7 +1699,7 @@ private fun AgentHubScreen(state: UiState, viewModel: AppViewModel) {
                 onClick = { viewModel.openKanban() },
             )
             SettingsRow(
-                icon = Icons.Filled.Hub,
+                icon = Icons.Filled.Forum,
                 label = stringResource(R.string.settings_channels),
                 value = if (channels.isEmpty()) {
                     stringResource(R.string.settings_group_channels_note)
@@ -1708,7 +1725,7 @@ private fun AgentHubScreen(state: UiState, viewModel: AppViewModel) {
                 onClick = { viewModel.openPlugins() },
             )
             SettingsRow(
-                icon = Icons.Filled.Dns,
+                icon = Icons.Filled.Cable,
                 label = stringResource(R.string.agent_hub_mcp),
                 value = stringResource(R.string.agent_hub_mcp_note),
                 onClick = { viewModel.openMcp() },
@@ -1720,13 +1737,13 @@ private fun AgentHubScreen(state: UiState, viewModel: AppViewModel) {
                 onClick = { viewModel.openPets() },
             )
             SettingsRow(
-                icon = Icons.Filled.Psychology,
+                icon = Icons.Filled.Memory,
                 label = stringResource(R.string.settings_group_memory),
                 value = stringResource(R.string.settings_group_memory_note),
                 onClick = { viewModel.openSettingsGroup(SettingsGroup.Memory) },
             )
             SettingsRow(
-                icon = Icons.Filled.WbSunny,
+                icon = Icons.Filled.ModelTraining,
                 label = stringResource(R.string.settings_group_models),
                 value = stringResource(R.string.settings_group_models_note),
                 onClick = { viewModel.openSettingsGroup(SettingsGroup.Models) },
@@ -1769,7 +1786,7 @@ private fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
             state.notice?.let { NoticeNote(it) { viewModel.dismissNotice() } }
 
             SettingsRow(
-                icon = Icons.Filled.Settings,
+                icon = Icons.Filled.Tune,
                 label = stringResource(R.string.more_settings_title),
                 value = stringResource(R.string.more_settings_note),
                 onClick = { viewModel.openMoreSettings() },
@@ -1777,13 +1794,13 @@ private fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
 
             SettingsSection(stringResource(R.string.settings_category_app))
             SettingsRow(
-                icon = Icons.Filled.Language,
+                icon = Icons.Filled.PhoneAndroid,
                 label = stringResource(R.string.settings_group_device),
                 value = stringResource(R.string.settings_group_device_note),
                 onClick = { viewModel.openSettingsGroup(SettingsGroup.Device) },
             )
             SettingsRow(
-                icon = Icons.AutoMirrored.Filled.Chat,
+                icon = Icons.Filled.Info,
                 label = stringResource(R.string.settings_section_about),
                 value = stringResource(R.string.settings_group_about_note),
                 onClick = { viewModel.openSettingsGroup(SettingsGroup.About) },
@@ -1829,31 +1846,31 @@ private fun MoreSettingsScreen(state: UiState, viewModel: AppViewModel) {
 
             SettingsSection(stringResource(R.string.more_settings_studio))
             SettingsRow(
-                icon = Icons.Filled.RestartAlt,
+                icon = Icons.Filled.Compress,
                 label = stringResource(R.string.settings_group_compression),
                 value = stringResource(R.string.settings_group_compression_note),
                 onClick = { viewModel.openSettingsGroup(SettingsGroup.Compression) },
             )
             SettingsRow(
-                icon = Icons.Filled.Check,
+                icon = Icons.Filled.History,
                 label = stringResource(R.string.settings_group_sessions),
                 value = stringResource(R.string.settings_group_sessions_note),
                 onClick = { viewModel.openSettingsGroup(SettingsGroup.Sessions) },
             )
             SettingsRow(
-                icon = Icons.Filled.Check,
+                icon = Icons.Filled.PrivacyTip,
                 label = stringResource(R.string.settings_group_privacy),
                 value = stringResource(R.string.settings_group_privacy_note),
                 onClick = { viewModel.openSettingsGroup(SettingsGroup.Privacy) },
             )
             SettingsRow(
-                icon = Icons.Filled.Dns,
+                icon = Icons.Filled.VpnLock,
                 label = stringResource(R.string.settings_group_proxy),
                 value = stringResource(R.string.settings_group_proxy_note),
                 onClick = { viewModel.openSettingsGroup(SettingsGroup.Proxy) },
             )
             SettingsRow(
-                icon = Icons.Filled.Settings,
+                icon = Icons.Filled.DisplaySettings,
                 label = stringResource(R.string.settings_group_display),
                 value = stringResource(R.string.settings_group_display_note),
                 onClick = { viewModel.openSettingsGroup(SettingsGroup.Display) },
@@ -1996,7 +2013,7 @@ private fun ProfileSettings(state: UiState, viewModel: AppViewModel) {
         onClick = { viewModel.show(Screen.Profiles) },
     )
     SettingsRow(
-        icon = Icons.Filled.WbSunny,
+        icon = Icons.Filled.ModelTraining,
         label = stringResource(R.string.settings_default_model),
         value = state.defaultModel ?: stringResource(R.string.settings_default_model_server),
         onClick = {
@@ -2096,25 +2113,25 @@ private fun AgentSettings(state: UiState, viewModel: AppViewModel) {
     }
 
     SettingsRow(
-        icon = Icons.Filled.Psychology,
+        icon = Icons.Filled.Repeat,
         label = stringResource(R.string.agent_max_turns),
         value = agent?.maxTurns?.toString() ?: stringResource(R.string.agent_unset),
         onClick = { editing = "max_turns" },
     )
     SettingsRow(
-        icon = Icons.Filled.RestartAlt,
+        icon = Icons.Filled.Timer,
         label = stringResource(R.string.agent_gateway_timeout),
         value = agent?.gatewayTimeout?.toString() ?: stringResource(R.string.agent_unset),
         onClick = { editing = "gateway_timeout" },
     )
     SettingsRow(
-        icon = Icons.Filled.RestartAlt,
+        icon = Icons.Filled.HourglassBottom,
         label = stringResource(R.string.agent_drain_timeout),
         value = agent?.restartDrainTimeout?.toString() ?: stringResource(R.string.agent_unset),
         onClick = { editing = "restart_drain_timeout" },
     )
     SettingsRow(
-        icon = Icons.Filled.Check,
+        icon = Icons.AutoMirrored.Filled.Rule,
         label = stringResource(R.string.agent_tool_enforcement),
         value = stringResource(
             TOOL_ENFORCEMENT.firstOrNull { it.first == agent?.toolEnforcement }?.second ?: R.string.agent_tool_auto,
@@ -2145,7 +2162,7 @@ private fun AgentSettings(state: UiState, viewModel: AppViewModel) {
     if (policy?.enabled == true) {
         if (state.activeProfile.ifBlank { "default" } == "default") {
             SettingsRow(
-                icon = Icons.Filled.Settings,
+                icon = Icons.Filled.AccountTree,
                 label = stringResource(R.string.agent_management),
                 value = stringResource(R.string.agent_management_note),
                 trailing = {
@@ -2161,7 +2178,7 @@ private fun AgentSettings(state: UiState, viewModel: AppViewModel) {
             )
         }
         SettingsRow(
-            icon = Icons.Filled.Person,
+            icon = Icons.Filled.Groups,
             label = stringResource(R.string.agent_policy),
             value = stringResource(
                 if (policy.include == null) R.string.agent_policy_all else R.string.agent_policy_include,
@@ -2290,7 +2307,7 @@ private fun DeviceSettings(state: UiState, viewModel: AppViewModel) {
 @Composable
 private fun AboutSettings() {
     SettingsRow(
-        icon = Icons.AutoMirrored.Filled.Chat,
+        icon = Icons.Filled.Info,
         label = stringResource(R.string.settings_version),
         value = BuildConfig.VERSION_NAME,
     )
@@ -2333,7 +2350,7 @@ private fun ChannelsScreen(state: UiState, viewModel: AppViewModel) {
 
             listed.forEach { (spec, status) ->
                 SettingsRow(
-                    icon = Icons.Filled.Hub,
+                    icon = painterResource(requireNotNull(spec.iconRes)),
                     label = spec.label,
                     value = stringResource(
                         when {
@@ -2385,6 +2402,16 @@ private fun ChannelScreen(state: UiState, viewModel: AppViewModel) {
                     if (status?.configured == true) R.string.channel_configured else R.string.channel_missing,
                 ),
                 onBack = { viewModel.back() },
+                leading = spec.iconRes?.let { iconRes ->
+                    {
+                        Icon(
+                            painter = painterResource(iconRes),
+                            contentDescription = null,
+                            modifier = Modifier.size(26.dp),
+                            tint = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                },
             )
         },
     ) { padding ->
@@ -2399,12 +2426,26 @@ private fun ChannelScreen(state: UiState, viewModel: AppViewModel) {
             state.error?.let { ErrorNote(it) { viewModel.dismissError() } }
             state.notice?.let { NoticeNote(it) { viewModel.dismissNotice() } }
 
-            SettingsRow(
-                icon = Icons.Filled.Hub,
-                label = stringResource(R.string.channel_enabled),
-                value = stringResource(R.string.channel_enabled_note),
-                trailing = { Switch(checked = enabled, onCheckedChange = { enabled = it }) },
-            )
+            val enabledLabel = stringResource(R.string.channel_enabled)
+            val enabledNote = stringResource(R.string.channel_enabled_note)
+            val enabledSwitch: @Composable () -> Unit = {
+                Switch(checked = enabled, onCheckedChange = { enabled = it })
+            }
+            if (spec.iconRes != null) {
+                SettingsRow(
+                    icon = painterResource(spec.iconRes),
+                    label = enabledLabel,
+                    value = enabledNote,
+                    trailing = enabledSwitch,
+                )
+            } else {
+                SettingsRow(
+                    icon = Icons.Filled.Forum,
+                    label = enabledLabel,
+                    value = enabledNote,
+                    trailing = enabledSwitch,
+                )
+            }
 
             if (spec.pairedElsewhere) {
                 Text(
@@ -2484,6 +2525,41 @@ internal fun SettingsRow(
     onClick: (() -> Unit)? = null,
     trailing: @Composable (() -> Unit)? = null,
 ) {
+    SettingsRowContent(
+        leading = { Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+        label = label,
+        value = value,
+        onClick = onClick,
+        trailing = trailing,
+    )
+}
+
+/** Settings row for Studio/channel vector assets that are not Material icons. */
+@Composable
+internal fun SettingsRow(
+    icon: Painter,
+    label: String,
+    value: String,
+    onClick: (() -> Unit)? = null,
+    trailing: @Composable (() -> Unit)? = null,
+) {
+    SettingsRowContent(
+        leading = { Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+        label = label,
+        value = value,
+        onClick = onClick,
+        trailing = trailing,
+    )
+}
+
+@Composable
+private fun SettingsRowContent(
+    leading: @Composable () -> Unit,
+    label: String,
+    value: String,
+    onClick: (() -> Unit)?,
+    trailing: @Composable (() -> Unit)?,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -2492,7 +2568,7 @@ internal fun SettingsRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        leading()
         Column(modifier = Modifier.weight(1f)) {
             Text(label, style = MaterialTheme.typography.bodyLarge)
             Text(

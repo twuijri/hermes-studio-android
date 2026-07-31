@@ -12,15 +12,38 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.LastPage
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Approval
+import androidx.compose.material.icons.filled.AttachMoney
+import androidx.compose.material.icons.filled.Compress
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Difference
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Height
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.ModelTraining
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.PrivacyTip
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RestartAlt
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.TrackChanges
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material.icons.filled.VerticalAlignTop
+import androidx.compose.material.icons.filled.ViewCompact
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -38,6 +61,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -87,7 +111,7 @@ internal fun AccountStudioSettings(state: UiState, viewModel: AppViewModel) {
         onClick = { usernameDialog = true },
     )
     SettingsRow(
-        icon = Icons.Filled.Check,
+        icon = Icons.Filled.Lock,
         label = stringResource(R.string.account_change_password),
         value = stringResource(R.string.account_change_password_note),
         onClick = { passwordDialog = true },
@@ -108,13 +132,13 @@ internal fun AccountStudioSettings(state: UiState, viewModel: AppViewModel) {
         },
     )
     SettingsRow(
-        icon = Icons.Filled.Refresh,
+        icon = Icons.Filled.Shuffle,
         label = stringResource(R.string.account_avatar_random),
         value = stringResource(R.string.account_avatar_random_note),
         onClick = { viewModel.randomizeAccountAvatar() },
     )
     SettingsRow(
-        icon = Icons.Filled.Refresh,
+        icon = Icons.Filled.RestartAlt,
         label = stringResource(R.string.account_avatar_reset),
         value = stringResource(R.string.account_avatar_reset_note),
         onClick = { viewModel.resetAccountAvatar() },
@@ -123,7 +147,7 @@ internal fun AccountStudioSettings(state: UiState, viewModel: AppViewModel) {
     SettingsSection(stringResource(R.string.account_locked_ips))
     if (state.lockedIps.isEmpty()) {
         SettingsRow(
-            icon = Icons.Filled.Check,
+            icon = Icons.Filled.VerifiedUser,
             label = stringResource(R.string.account_no_locked_ips),
             value = stringResource(R.string.account_no_locked_ips_note),
         )
@@ -419,7 +443,7 @@ internal fun ModelProvidersSettings(state: UiState, viewModel: AppViewModel) {
     )
     if (state.modelProviders.isEmpty()) {
         SettingsRow(
-            icon = Icons.Filled.WbSunny,
+            icon = Icons.Filled.ModelTraining,
             label = stringResource(R.string.models_no_providers),
             value = stringResource(R.string.models_no_providers_note),
         )
@@ -486,28 +510,29 @@ internal fun ModelProvidersSettings(state: UiState, viewModel: AppViewModel) {
 internal fun DisplayStudioSettings(state: UiState, viewModel: AppViewModel) {
     val display = state.studioSettings?.display ?: return
     StudioHint(R.string.display_studio_note)
-    StudioToggle(R.string.display_streaming, R.string.display_streaming_note, display.streaming) {
+    StudioToggle(Icons.Filled.PlayCircle, R.string.display_streaming, R.string.display_streaming_note, display.streaming) {
         viewModel.setStudioValue("display", "streaming", it)
     }
-    StudioToggle(R.string.display_compact, R.string.display_compact_note, display.compact) {
+    StudioToggle(Icons.Filled.ViewCompact, R.string.display_compact, R.string.display_compact_note, display.compact) {
         viewModel.setStudioValue("display", "compact", it)
     }
-    StudioToggle(R.string.display_reasoning, R.string.display_reasoning_note, display.showReasoning) {
+    StudioToggle(Icons.Filled.Psychology, R.string.display_reasoning, R.string.display_reasoning_note, display.showReasoning) {
         viewModel.setStudioValue("display", "show_reasoning", it)
     }
-    StudioToggle(R.string.display_cost, R.string.display_cost_note, display.showCost) {
+    StudioToggle(Icons.Filled.AttachMoney, R.string.display_cost, R.string.display_cost_note, display.showCost) {
         viewModel.setStudioValue("display", "show_cost", it)
     }
-    StudioToggle(R.string.display_inline_diffs, R.string.display_inline_diffs_note, display.inlineDiffs) {
+    StudioToggle(Icons.Filled.Difference, R.string.display_inline_diffs, R.string.display_inline_diffs_note, display.inlineDiffs) {
         viewModel.setStudioValue("display", "inline_diffs", it)
     }
-    StudioToggle(R.string.display_bell, R.string.display_bell_note, display.bellOnComplete) {
+    StudioToggle(Icons.Filled.NotificationsActive, R.string.display_bell, R.string.display_bell_note, display.bellOnComplete) {
         viewModel.setStudioValue("display", "bell_on_complete", it)
     }
-    StudioToggle(R.string.display_notify, R.string.display_notify_note, display.notifyOnComplete) {
+    StudioToggle(Icons.Filled.Notifications, R.string.display_notify, R.string.display_notify_note, display.notifyOnComplete) {
         viewModel.setStudioValue("display", "notify_on_complete", it)
     }
     StudioNumber(
+        Icons.Filled.Height,
         R.string.display_input_height,
         R.string.display_input_height_note,
         display.chatInputHeight?.toDouble() ?: 96.0,
@@ -520,16 +545,16 @@ internal fun DisplayStudioSettings(state: UiState, viewModel: AppViewModel) {
 @Composable
 internal fun MemoryStudioSettings(state: UiState, viewModel: AppViewModel) {
     val memory = state.studioSettings?.memory ?: return
-    StudioToggle(R.string.memory_enabled, R.string.memory_enabled_note, memory.enabled) {
+    StudioToggle(Icons.Filled.Memory, R.string.memory_enabled, R.string.memory_enabled_note, memory.enabled) {
         viewModel.setStudioValue("memory", "memory_enabled", it)
     }
-    StudioToggle(R.string.memory_profile, R.string.memory_profile_note, memory.userProfileEnabled) {
+    StudioToggle(Icons.Filled.Person, R.string.memory_profile, R.string.memory_profile_note, memory.userProfileEnabled) {
         viewModel.setStudioValue("memory", "user_profile_enabled", it)
     }
-    StudioNumber(R.string.memory_limit, R.string.memory_limit_note, memory.memoryCharLimit.toDouble(), 100.0, 10000.0, false) {
+    StudioNumber(Icons.Filled.TextFields, R.string.memory_limit, R.string.memory_limit_note, memory.memoryCharLimit.toDouble(), 100.0, 10000.0, false) {
         viewModel.setStudioValue("memory", "memory_char_limit", it.toInt())
     }
-    StudioNumber(R.string.memory_user_limit, R.string.memory_user_limit_note, memory.userCharLimit.toDouble(), 100.0, 10000.0, false) {
+    StudioNumber(Icons.Filled.Person, R.string.memory_user_limit, R.string.memory_user_limit_note, memory.userCharLimit.toDouble(), 100.0, 10000.0, false) {
         viewModel.setStudioValue("memory", "user_char_limit", it.toInt())
     }
 }
@@ -537,19 +562,19 @@ internal fun MemoryStudioSettings(state: UiState, viewModel: AppViewModel) {
 @Composable
 internal fun CompressionStudioSettings(state: UiState, viewModel: AppViewModel) {
     val value = state.studioSettings?.compression ?: return
-    StudioToggle(R.string.compression_enabled, R.string.compression_enabled_note, value.enabled) {
+    StudioToggle(Icons.Filled.Compress, R.string.compression_enabled, R.string.compression_enabled_note, value.enabled) {
         viewModel.setStudioValue("compression", "enabled", it)
     }
-    StudioNumber(R.string.compression_threshold, R.string.compression_threshold_note, value.threshold, 0.1, 0.95, true) {
+    StudioNumber(Icons.Filled.Tune, R.string.compression_threshold, R.string.compression_threshold_note, value.threshold, 0.1, 0.95, true) {
         viewModel.setStudioValue("compression", "threshold", it)
     }
-    StudioNumber(R.string.compression_target, R.string.compression_target_note, value.targetRatio, 0.05, 0.8, true) {
+    StudioNumber(Icons.Filled.TrackChanges, R.string.compression_target, R.string.compression_target_note, value.targetRatio, 0.05, 0.8, true) {
         viewModel.setStudioValue("compression", "target_ratio", it)
     }
-    StudioNumber(R.string.compression_last, R.string.compression_last_note, value.protectLast.toDouble(), 0.0, 200.0, false) {
+    StudioNumber(Icons.AutoMirrored.Filled.LastPage, R.string.compression_last, R.string.compression_last_note, value.protectLast.toDouble(), 0.0, 200.0, false) {
         viewModel.setStudioValue("compression", "protect_last_n", it.toInt())
     }
-    StudioNumber(R.string.compression_first, R.string.compression_first_note, value.protectFirst.toDouble(), 0.0, 50.0, false) {
+    StudioNumber(Icons.Filled.VerticalAlignTop, R.string.compression_first, R.string.compression_first_note, value.protectFirst.toDouble(), 0.0, 50.0, false) {
         viewModel.setStudioValue("compression", "protect_first_n", it.toInt())
     }
 }
@@ -558,16 +583,17 @@ internal fun CompressionStudioSettings(state: UiState, viewModel: AppViewModel) 
 internal fun SessionStudioSettings(state: UiState, viewModel: AppViewModel) {
     val studio = state.studioSettings ?: return
     val session = studio.session
-    StudioToggle(R.string.session_require_approval, R.string.session_require_approval_note, session.approvalsMode == "manual") {
+    StudioToggle(Icons.Filled.Approval, R.string.session_require_approval, R.string.session_require_approval_note, session.approvalsMode == "manual") {
         viewModel.setStudioValue("approvals", "mode", if (it) "manual" else "off")
     }
-    StudioToggle(R.string.session_memory_approval, R.string.session_memory_approval_note, studio.memory.writeApproval) {
+    StudioToggle(Icons.Filled.Memory, R.string.session_memory_approval, R.string.session_memory_approval_note, studio.memory.writeApproval) {
         viewModel.setStudioValue("memory", "write_approval", it)
     }
-    StudioToggle(R.string.session_skills_approval, R.string.session_skills_approval_note, session.skillsWriteApproval) {
+    StudioToggle(Icons.Filled.School, R.string.session_skills_approval, R.string.session_skills_approval_note, session.skillsWriteApproval) {
         viewModel.setStudioValue("skills", "write_approval", it)
     }
     StudioChoice(
+        Icons.Filled.RestartAlt,
         R.string.session_reset_mode,
         R.string.session_reset_mode_note,
         session.resetMode,
@@ -578,10 +604,10 @@ internal fun SessionStudioSettings(state: UiState, viewModel: AppViewModel) {
             "none" to R.string.session_mode_none,
         ),
     ) { viewModel.setStudioValue("session_reset", "mode", it) }
-    StudioNumber(R.string.session_idle_minutes, R.string.session_idle_minutes_note, session.idleMinutes.toDouble(), 10.0, 10080.0, false) {
+    StudioNumber(Icons.Filled.Timer, R.string.session_idle_minutes, R.string.session_idle_minutes_note, session.idleMinutes.toDouble(), 10.0, 10080.0, false) {
         viewModel.setStudioValue("session_reset", "idle_minutes", it.toInt())
     }
-    StudioNumber(R.string.session_at_hour, R.string.session_at_hour_note, session.atHour.toDouble(), 0.0, 23.0, false) {
+    StudioNumber(Icons.Filled.Schedule, R.string.session_at_hour, R.string.session_at_hour_note, session.atHour.toDouble(), 0.0, 23.0, false) {
         viewModel.setStudioValue("session_reset", "at_hour", it.toInt())
     }
 }
@@ -590,7 +616,7 @@ internal fun SessionStudioSettings(state: UiState, viewModel: AppViewModel) {
 internal fun PrivacyStudioSettings(state: UiState, viewModel: AppViewModel) {
     val privacy = state.studioSettings?.privacy ?: return
     StudioHint(R.string.privacy_description)
-    StudioToggle(R.string.privacy_redact, R.string.privacy_redact_note, privacy.redactPii) {
+    StudioToggle(Icons.Filled.PrivacyTip, R.string.privacy_redact, R.string.privacy_redact_note, privacy.redactPii) {
         viewModel.setStudioValue("privacy", "redact_pii", it)
     }
 }
@@ -638,9 +664,9 @@ private fun StudioHint(text: Int) {
 }
 
 @Composable
-private fun StudioToggle(label: Int, note: Int, checked: Boolean, onChange: (Boolean) -> Unit) {
+private fun StudioToggle(icon: ImageVector, label: Int, note: Int, checked: Boolean, onChange: (Boolean) -> Unit) {
     SettingsRow(
-        icon = Icons.Filled.Settings,
+        icon = icon,
         label = stringResource(label),
         value = stringResource(note),
         trailing = { Switch(checked = checked, onCheckedChange = onChange) },
@@ -649,6 +675,7 @@ private fun StudioToggle(label: Int, note: Int, checked: Boolean, onChange: (Boo
 
 @Composable
 private fun StudioNumber(
+    icon: ImageVector,
     label: Int,
     note: Int,
     current: Double,
@@ -670,7 +697,7 @@ private fun StudioNumber(
         )
     }
     SettingsRow(
-        icon = Icons.Filled.RestartAlt,
+        icon = icon,
         label = stringResource(label),
         value = (if (decimal) current.toString() else current.toInt().toString()) + " · " + stringResource(note),
         onClick = { open = true },
@@ -721,6 +748,7 @@ private fun NumberSettingDialog(
 
 @Composable
 private fun StudioChoice(
+    icon: ImageVector,
     label: Int,
     note: Int,
     selected: String,
@@ -751,7 +779,7 @@ private fun StudioChoice(
     }
     val selectedLabel = choices.firstOrNull { it.first == selected }?.second ?: choices.first().second
     SettingsRow(
-        icon = Icons.Filled.Settings,
+        icon = icon,
         label = stringResource(label),
         value = stringResource(selectedLabel) + " · " + stringResource(note),
         onClick = { open = true },

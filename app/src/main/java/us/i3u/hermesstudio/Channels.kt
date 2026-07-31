@@ -1,5 +1,7 @@
 package us.i3u.hermesstudio
 
+import androidx.annotation.DrawableRes
+
 /**
  * What each channel needs before Hermes can talk on it.
  *
@@ -17,6 +19,8 @@ data class ChannelField(
 data class ChannelSpec(
     val platform: String,
     val label: String,
+    /** The same platform mark shown by Hermes Studio. */
+    @DrawableRes val iconRes: Int? = null,
     val fields: List<ChannelField>,
     /** Set up outside the app — WhatsApp pairs by scanning a code on the server. */
     val pairedElsewhere: Boolean = false,
@@ -26,6 +30,7 @@ val CHANNELS = listOf(
     ChannelSpec(
         platform = "telegram",
         label = "Telegram",
+        iconRes = R.drawable.ic_channel_telegram,
         fields = listOf(
             ChannelField("token", "Bot token", hint = "From @BotFather"),
             ChannelField("proxy", "Proxy", secret = false, hint = "Optional"),
@@ -34,6 +39,7 @@ val CHANNELS = listOf(
     ChannelSpec(
         platform = "discord",
         label = "Discord",
+        iconRes = R.drawable.ic_channel_discord,
         fields = listOf(
             ChannelField("token", "Bot token", hint = "From the Discord developer portal"),
             ChannelField("proxy", "Proxy", secret = false, hint = "Optional"),
@@ -42,17 +48,20 @@ val CHANNELS = listOf(
     ChannelSpec(
         platform = "slack",
         label = "Slack",
+        iconRes = R.drawable.ic_channel_slack,
         fields = listOf(ChannelField("token", "Bot token", hint = "xoxb-…")),
     ),
     ChannelSpec(
         platform = "whatsapp",
         label = "WhatsApp",
+        iconRes = R.drawable.ic_channel_whatsapp,
         fields = emptyList(),
         pairedElsewhere = true,
     ),
     ChannelSpec(
         platform = "matrix",
         label = "Matrix",
+        iconRes = R.drawable.ic_channel_matrix,
         fields = listOf(
             ChannelField("extra.homeserver", "Homeserver", secret = false, hint = "https://matrix.org"),
             ChannelField("token", "Access token"),
@@ -64,6 +73,7 @@ val CHANNELS = listOf(
     ChannelSpec(
         platform = "weixin",
         label = "Weixin",
+        iconRes = R.drawable.ic_channel_weixin,
         fields = listOf(
             ChannelField("token", "Token"),
             ChannelField("extra.account_id", "Account id", secret = false),
@@ -72,6 +82,7 @@ val CHANNELS = listOf(
     ChannelSpec(
         platform = "wecom",
         label = "WeCom",
+        iconRes = R.drawable.ic_channel_wecom,
         fields = listOf(
             ChannelField("extra.bot_id", "Bot id", secret = false),
             ChannelField("extra.secret", "Secret"),
@@ -80,6 +91,7 @@ val CHANNELS = listOf(
     ChannelSpec(
         platform = "feishu",
         label = "Feishu",
+        iconRes = R.drawable.ic_channel_feishu,
         fields = listOf(
             ChannelField("extra.app_id", "App id", secret = false),
             ChannelField("extra.app_secret", "App secret"),
@@ -90,6 +102,7 @@ val CHANNELS = listOf(
     ChannelSpec(
         platform = "dingtalk",
         label = "DingTalk",
+        iconRes = R.drawable.ic_channel_dingtalk,
         fields = listOf(
             ChannelField("extra.client_id", "Client id", secret = false),
             ChannelField("extra.client_secret", "Client secret"),
@@ -99,6 +112,7 @@ val CHANNELS = listOf(
     ChannelSpec(
         platform = "qqbot",
         label = "QQ Bot",
+        iconRes = R.drawable.ic_channel_qqbot,
         fields = listOf(
             ChannelField("extra.app_id", "App id", secret = false),
             ChannelField("extra.client_secret", "Client secret"),
@@ -108,4 +122,4 @@ val CHANNELS = listOf(
 
 fun channelSpec(platform: String): ChannelSpec =
     CHANNELS.firstOrNull { it.platform == platform }
-        ?: ChannelSpec(platform, platform.replaceFirstChar { it.uppercase() }, emptyList())
+        ?: ChannelSpec(platform, platform.replaceFirstChar { it.uppercase() }, fields = emptyList())

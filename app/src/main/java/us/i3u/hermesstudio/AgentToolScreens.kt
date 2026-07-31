@@ -28,11 +28,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Cable
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Favorite
@@ -440,7 +440,7 @@ internal fun McpScreen(state: UiState, viewModel: AppViewModel) {
             if (ui.loading) LoadingRow()
             state.error?.let { ErrorNote(it) { viewModel.dismissError() } }
             if (!ui.loading && ui.servers.isEmpty()) {
-                EmptyToolState(Icons.Filled.Dns, stringResource(R.string.mcp_empty), stringResource(R.string.mcp_empty_note), Modifier.weight(1f))
+                EmptyToolState(Icons.Filled.Cable, stringResource(R.string.mcp_empty), stringResource(R.string.mcp_empty_note), Modifier.weight(1f))
             } else {
                 LazyColumn(
                     Modifier.fillMaxSize(),
